@@ -7,6 +7,7 @@ interface LocalRepository {
     suspend fun joinNetwork(networkId: String, deviceHash: String, alias: String): Result<Unit>
     suspend fun leaveNetwork(networkId: String, deviceHash: String): Result<Unit>
     suspend fun postToLocal(networkId: String, deviceHash: String, alias: String, text: String): Result<Unit>
+    suspend fun reactToLocalPost(postId: String, deviceHash: String, emoji: String): Result<Unit>
     fun getLocalFeed(networkId: String): Flow<List<LocalPost>>
     fun getPeopleHere(networkId: String): Flow<List<String>>
 }

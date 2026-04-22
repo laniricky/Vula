@@ -72,6 +72,28 @@ class LocalRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun reactToLocalPost(postId: String, deviceHash: String, emoji: String): Result<Unit> {
+        return try {
+            val postRef = firestore.collection(Constants.LOCAL_POSTS_COLLECTION).document(postId)
+            val reactionRef = postRef.collection(Constants.REACTIONS_SUBCOLLECTION).document(deviceHash)
+
+            val existing = reactionRef.get().await()
+            if (!existing.exists()) {
+                firestore.runBatch { batch ->
+                    batch.set(reactionRef, mapOf(
+                        "emoji" to emoji,
+                        "reactedAt" to System.currentTimeMillis()
+                    ))
+                    batch.update(postRef, "reactionsCount",
+                        com.google.firebase.firestore.FieldValue.increment(1))
+                }.await()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override fun getLocalFeed(networkId: String): Flow<List<LocalPost>> = callbackFlow {
         val now = System.currentTimeMillis()
         val query = firestore.collection(Constants.LOCAL_POSTS_COLLECTION)

@@ -92,6 +92,13 @@ class LocalViewModel @Inject constructor(
         }
     }
 
+    fun reactToPost(postId: String, emoji: String) {
+        val deviceHash = currentDeviceHash ?: return
+        viewModelScope.launch {
+            localRepository.reactToLocalPost(postId, deviceHash, emoji)
+        }
+    }
+
     fun disableLocalMode() {
         val networkId = currentNetworkId ?: return
         val deviceHash = currentDeviceHash ?: return

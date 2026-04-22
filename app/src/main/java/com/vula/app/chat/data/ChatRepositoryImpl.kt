@@ -5,6 +5,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.vula.app.core.model.ChatRoom
 import com.vula.app.core.model.Message
+import com.vula.app.core.model.MessageRequest
 import com.vula.app.core.model.User
 import com.vula.app.core.util.Constants
 import kotlinx.coroutines.channels.awaitClose
@@ -21,7 +22,7 @@ class ChatRepositoryImpl @Inject constructor(
     override suspend fun createDirectChat(otherUserId: String): Result<String> {
         return try {
             val currentUserId = auth.currentUser?.uid ?: throw Exception("Not logged in")
-            
+
             val querySnapshot = firestore.collection(Constants.CHAT_ROOMS_COLLECTION)
                 .whereArrayContains("participants", currentUserId)
                 .get()
@@ -60,13 +61,9 @@ class ChatRepositoryImpl @Inject constructor(
             .orderBy("lastMessageAt", Query.Direction.DESCENDING)
 
         val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
+            if (error != null) { close(error); return@addSnapshotListener }
             if (snapshot != null) {
-                val rooms = snapshot.documents.mapNotNull { it.toObject(ChatRoom::class.java) }
-                trySend(rooms)
+                trySend(snapshot.documents.mapNotNull { it.toObject(ChatRoom::class.java) })
             }
         }
         awaitClose { listener.remove() }
@@ -78,13 +75,9 @@ class ChatRepositoryImpl @Inject constructor(
             .orderBy("createdAt", Query.Direction.ASCENDING)
 
         val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
+            if (error != null) { close(error); return@addSnapshotListener }
             if (snapshot != null) {
-                val msgs = snapshot.documents.mapNotNull { it.toObject(Message::class.java) }
-                trySend(msgs)
+                trySend(snapshot.documents.mapNotNull { it.toObject(Message::class.java) })
             }
         }
         awaitClose { listener.remove() }
@@ -98,6 +91,11 @@ class ChatRepositoryImpl @Inject constructor(
 
             val roomRef = firestore.collection(Constants.CHAT_ROOMS_COLLECTION).document(chatRoomId)
             val msgRef = roomRef.collection(Constants.MESSAGES_SUBCOLLECTION).document()
+
+            // Fetch room to know who else is in it for unreadFor
+            val roomSnap = roomRef.get().await()
+            val room = roomSnap.toObject(ChatRoom::class.java)
+            val otherParticipants = room?.participants?.filter { it != currentUserId } ?: emptyList()
 
             val now = System.currentTimeMillis()
             val message = Message(
@@ -113,6 +111,8 @@ class ChatRepositoryImpl @Inject constructor(
                 batch.set(msgRef, message)
                 batch.update(roomRef, "lastMessage", text)
                 batch.update(roomRef, "lastMessageAt", now)
+                batch.update(roomRef, "lastMessageSenderId", currentUserId)
+                batch.update(roomRef, "unreadFor", otherParticipants)
             }.await()
 
             Result.success(Unit)
@@ -126,8 +126,113 @@ class ChatRepositoryImpl @Inject constructor(
             val currentUserId = auth.currentUser?.uid ?: return Result.success(Unit)
             val msgRef = firestore.collection(Constants.CHAT_ROOMS_COLLECTION).document(chatRoomId)
                 .collection(Constants.MESSAGES_SUBCOLLECTION).document(messageId)
-            
             msgRef.update("readBy", com.google.firebase.firestore.FieldValue.arrayUnion(currentUserId)).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun markRoomRead(chatRoomId: String): Result<Unit> {
+        return try {
+            val currentUserId = auth.currentUser?.uid ?: return Result.success(Unit)
+            val roomRef = firestore.collection(Constants.CHAT_ROOMS_COLLECTION).document(chatRoomId)
+            roomRef.update("unreadFor",
+                com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // ─── Message Requests ─────────────────────────────────────────────────────
+
+    override suspend fun sendMessageRequest(
+        toUserId: String,
+        toUsername: String,
+        toProfileImageUrl: String?
+    ): Result<Unit> {
+        return try {
+            val currentUserId = auth.currentUser?.uid ?: throw Exception("Not logged in")
+            val userDoc = firestore.collection(Constants.USERS_COLLECTION).document(currentUserId).get().await()
+            val user = userDoc.toObject(User::class.java) ?: throw Exception("User not found")
+
+            // Idempotent: one request per (from, to) pair
+            val existing = firestore.collection(Constants.MESSAGE_REQUESTS_COLLECTION)
+                .whereEqualTo("fromUserId", currentUserId)
+                .whereEqualTo("toUserId", toUserId)
+                .get().await()
+            if (!existing.isEmpty) return Result.success(Unit)
+
+            val ref = firestore.collection(Constants.MESSAGE_REQUESTS_COLLECTION).document()
+            val request = MessageRequest(
+                id = ref.id,
+                fromUserId = currentUserId,
+                fromUsername = user.username,
+                fromProfileImageUrl = user.profileImageUrl,
+                toUserId = toUserId,
+                status = "pending",
+                createdAt = System.currentTimeMillis()
+            )
+            ref.set(request).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override fun getIncomingRequests(): Flow<List<MessageRequest>> = callbackFlow {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) { close(); return@callbackFlow }
+
+        val query = firestore.collection(Constants.MESSAGE_REQUESTS_COLLECTION)
+            .whereEqualTo("toUserId", currentUserId)
+            .whereEqualTo("status", "pending")
+            .orderBy("createdAt", Query.Direction.DESCENDING)
+
+        val listener = query.addSnapshotListener { snapshot, error ->
+            if (error != null) { close(error); return@addSnapshotListener }
+            if (snapshot != null) {
+                trySend(snapshot.documents.mapNotNull { it.toObject(MessageRequest::class.java) })
+            }
+        }
+        awaitClose { listener.remove() }
+    }
+
+    override fun getRequestStatusTo(toUserId: String): Flow<String?> = callbackFlow {
+        val currentUserId = auth.currentUser?.uid
+        if (currentUserId == null) { trySend(null); close(); return@callbackFlow }
+
+        val query = firestore.collection(Constants.MESSAGE_REQUESTS_COLLECTION)
+            .whereEqualTo("fromUserId", currentUserId)
+            .whereEqualTo("toUserId", toUserId)
+            .limit(1)
+
+        val listener = query.addSnapshotListener { snapshot, error ->
+            if (error != null) { close(error); return@addSnapshotListener }
+            val doc = snapshot?.documents?.firstOrNull()
+            trySend(doc?.getString("status"))
+        }
+        awaitClose { listener.remove() }
+    }
+
+    override suspend fun acceptMessageRequest(requestId: String, fromUserId: String): Result<String> {
+        return try {
+            val requestRef = firestore.collection(Constants.MESSAGE_REQUESTS_COLLECTION).document(requestId)
+            requestRef.update("status", "accepted").await()
+            val roomId = createDirectChat(fromUserId).getOrThrow()
+            Result.success(roomId)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun declineMessageRequest(requestId: String): Result<Unit> {
+        return try {
+            firestore.collection(Constants.MESSAGE_REQUESTS_COLLECTION)
+                .document(requestId)
+                .update("status", "declined")
+                .await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

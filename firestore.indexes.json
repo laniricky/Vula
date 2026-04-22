@@ -4,7 +4,6 @@
       "collectionGroup": "posts",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "authorId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
@@ -12,31 +11,63 @@
       "collectionGroup": "posts",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },
     {
-      "collectionGroup": "local_posts",
+      "collectionGroup": "chatRooms",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "networkId", "order": "ASCENDING" },
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
       ]
     },
     {
       "collectionGroup": "messages",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "roomId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
     },
     {
-      "collectionGroup": "chat_rooms",
+      "collectionGroup": "localPosts",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "members", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+        { "fieldPath": "networkId",  "order": "ASCENDING" },
+        { "fieldPath": "expiresAt",  "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "localPosts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "networkId", "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messageRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "toUserId",  "order": "ASCENDING"  },
+        { "fieldPath": "status",    "order": "ASCENDING"  },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messageRequests",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "fromUserId", "order": "ASCENDING" },
+        { "fieldPath": "toUserId",   "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "username", "order": "ASCENDING" }
       ]
     }
   ],

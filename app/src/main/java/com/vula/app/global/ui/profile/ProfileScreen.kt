@@ -9,10 +9,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
@@ -28,9 +25,12 @@ import com.vula.app.core.ui.components.VulaTopBar
 fun ProfileScreen(
     userId: String? = null,
     onLogoutClick: () -> Unit = {},
+    onNavigateToConversation: (String) -> Unit = {},
+    onBackClick: (() -> Unit)? = null,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val messageState by viewModel.messageState.collectAsState()
 
     LaunchedEffect(userId) {
         viewModel.loadProfile(userId)
@@ -47,9 +47,10 @@ fun ProfileScreen(
             is ProfileUiState.Success -> {
                 VulaTopBar(
                     title = state.user.username,
+                    navigationIcon = onBackClick,
                     actions = {
                         if (state.isOwnProfile) {
-                            IconButton(onClick = { 
+                            IconButton(onClick = {
                                 viewModel.logout()
                                 onLogoutClick()
                             }) {
@@ -59,6 +60,7 @@ fun ProfileScreen(
                     }
                 )
 
+                // ── Stats row ────────────────────────────────────────────────
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -71,7 +73,6 @@ fun ProfileScreen(
                         username = state.user.username,
                         size = 80.dp
                     )
-                    
                     Row(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         modifier = Modifier.weight(1f)
@@ -82,12 +83,12 @@ fun ProfileScreen(
                     }
                 }
 
+                // ── Name + bio ───────────────────────────────────────────────
                 Text(
                     text = state.user.displayName,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
-
                 if (state.user.bio.isNotEmpty()) {
                     Text(
                         text = state.user.bio,
@@ -97,31 +98,63 @@ fun ProfileScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Row(modifier = Modifier.padding(horizontal = 16.dp).fillMaxWidth()) {
+                // ── Action buttons ───────────────────────────────────────────
+                Row(modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth()) {
                     if (state.isOwnProfile) {
                         OutlinedButton(
-                            onClick = { /* TODO Edit Profile */ },
+                            onClick = { /* TODO: Edit profile */ },
                             modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Edit Profile")
-                        }
+                        ) { Text("Edit Profile") }
                     } else {
+                        // Follow / Following
                         Button(
                             onClick = { viewModel.toggleFollow(state.user.id, state.isFollowing) },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (state.isFollowing) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                                contentColor = if (state.isFollowing) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                                containerColor = if (state.isFollowing)
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                else MaterialTheme.colorScheme.primary,
+                                contentColor = if (state.isFollowing)
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.onPrimary
                             )
-                        ) {
-                            Text(if (state.isFollowing) "Following" else "Follow")
-                        }
+                        ) { Text(if (state.isFollowing) "Following" else "Follow") }
+
                         Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedButton(
-                            onClick = { /* TODO Message */ },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("Message")
+
+                        // Message / Request Sent button
+                        when (messageState) {
+                            is MessageButtonState.RequestSent -> {
+                                OutlinedButton(
+                                    onClick = {
+                                        // If request was accepted → open chat directly
+                                        viewModel.openOrCreateChat(state.user.id) { roomId ->
+                                            onNavigateToConversation(roomId)
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Request Sent ✓") }
+                            }
+                            is MessageButtonState.Loading -> {
+                                OutlinedButton(
+                                    onClick = {},
+                                    enabled = false,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                }
+                            }
+                            else -> {
+                                OutlinedButton(
+                                    onClick = { viewModel.sendMessageRequest(state.user) },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Message") }
+                            }
                         }
                     }
                 }
@@ -129,6 +162,7 @@ fun ProfileScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 HorizontalDivider()
 
+                // ── Post grid ────────────────────────────────────────────────
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
                     modifier = Modifier.fillMaxSize(),

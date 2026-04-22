@@ -1,11 +1,9 @@
 package com.vula.app.core.ui.components
 
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.font.FontWeight
 
@@ -13,6 +11,8 @@ import androidx.compose.ui.text.font.FontWeight
 @Composable
 fun VulaTopBar(
     title: String,
+    /** Pass a non-null lambda to show a back arrow navigating to it */
+    navigationIcon: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {}
 ) {
     TopAppBar(
@@ -23,6 +23,17 @@ fun VulaTopBar(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground
             )
+        },
+        navigationIcon = {
+            if (navigationIcon != null) {
+                IconButton(onClick = navigationIcon) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+            }
         },
         actions = actions,
         colors = TopAppBarDefaults.topAppBarColors(

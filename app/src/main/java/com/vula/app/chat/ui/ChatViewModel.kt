@@ -6,10 +6,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.vula.app.chat.data.ChatRepository
 import com.vula.app.core.model.ChatRoom
 import com.vula.app.core.model.Message
+import com.vula.app.core.model.MessageRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -25,10 +29,21 @@ class ChatViewModel @Inject constructor(
     private val _messagesState = MutableStateFlow<List<Message>>(emptyList())
     val messagesState: StateFlow<List<Message>> = _messagesState.asStateFlow()
 
+    private val _incomingRequests = MutableStateFlow<List<MessageRequest>>(emptyList())
+    val incomingRequests: StateFlow<List<MessageRequest>> = _incomingRequests.asStateFlow()
+
+    /** Count of chat rooms with unread messages + pending incoming requests */
+    val unreadCount: StateFlow<Int> = combine(_roomsState, _incomingRequests) { rooms, requests ->
+        val uid = currentUserId ?: return@combine 0
+        val unreadRooms = rooms.count { room -> room.unreadFor.contains(uid) }
+        unreadRooms + requests.size
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     val currentUserId: String? get() = auth.currentUser?.uid
 
     init {
         loadChatRooms()
+        loadIncomingRequests()
     }
 
     private fun loadChatRooms() {
@@ -39,8 +54,17 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    private fun loadIncomingRequests() {
+        viewModelScope.launch {
+            chatRepository.getIncomingRequests().collect { requests ->
+                _incomingRequests.value = requests
+            }
+        }
+    }
+
     fun loadMessages(chatRoomId: String) {
         viewModelScope.launch {
+            chatRepository.markRoomRead(chatRoomId)
             chatRepository.getMessages(chatRoomId).collect { msgs ->
                 _messagesState.value = msgs
                 val uid = currentUserId
@@ -64,6 +88,31 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             val result = chatRepository.createDirectChat(otherUserId)
             onResult(result.getOrNull())
+        }
+    }
+
+    fun sendMessageRequest(
+        toUserId: String,
+        toUsername: String,
+        toProfileImageUrl: String?,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = chatRepository.sendMessageRequest(toUserId, toUsername, toProfileImageUrl)
+            onResult(result.isSuccess)
+        }
+    }
+
+    fun acceptRequest(requestId: String, fromUserId: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val result = chatRepository.acceptMessageRequest(requestId, fromUserId)
+            onResult(result.getOrNull())
+        }
+    }
+
+    fun declineRequest(requestId: String) {
+        viewModelScope.launch {
+            chatRepository.declineMessageRequest(requestId)
         }
     }
 }

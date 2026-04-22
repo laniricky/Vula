@@ -95,6 +95,18 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun resetPassword(username: String): Result<Unit> {
+        return try {
+            val lowercaseUsername = username.trim().lowercase()
+            // The vula.local email convention — same trick used during login
+            val email = "$lowercaseUsername@vula.local"
+            auth.sendPasswordResetEmail(email).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(Exception("Could not send reset link. Check your username and try again."))
+        }
+    }
+
     override fun logout() {
         auth.signOut()
     }

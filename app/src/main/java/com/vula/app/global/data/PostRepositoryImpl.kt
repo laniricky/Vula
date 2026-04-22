@@ -95,15 +95,17 @@ class PostRepositoryImpl @Inject constructor(
             val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
             val likeRef = postRef.collection(Constants.LIKES_SUBCOLLECTION).document(userId)
 
-            firestore.runTransaction { transaction ->
-                val likeDoc = transaction.get(likeRef)
-                if (!likeDoc.exists()) {
-                    transaction.set(likeRef, mapOf("likedAt" to System.currentTimeMillis()))
-                    val postSnapshot = transaction.get(postRef)
-                    val currentLikes = postSnapshot.getLong("likesCount") ?: 0
-                    transaction.update(postRef, "likesCount", currentLikes + 1)
-                }
-            }.await()
+            // Only like if not already liked (guard read outside batch is acceptable for MVP)
+            val likeDoc = likeRef.get().await()
+            if (!likeDoc.exists()) {
+                firestore.runBatch { batch ->
+                    batch.set(likeRef, mapOf("likedAt" to System.currentTimeMillis()))
+                    batch.update(postRef, "likesCount",
+                        com.google.firebase.firestore.FieldValue.increment(1))
+                    batch.update(postRef, "likedBy",
+                        com.google.firebase.firestore.FieldValue.arrayUnion(userId))
+                }.await()
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -115,17 +117,16 @@ class PostRepositoryImpl @Inject constructor(
             val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
             val likeRef = postRef.collection(Constants.LIKES_SUBCOLLECTION).document(userId)
 
-            firestore.runTransaction { transaction ->
-                val likeDoc = transaction.get(likeRef)
-                if (likeDoc.exists()) {
-                    transaction.delete(likeRef)
-                    val postSnapshot = transaction.get(postRef)
-                    val currentLikes = postSnapshot.getLong("likesCount") ?: 0
-                    if (currentLikes > 0) {
-                        transaction.update(postRef, "likesCount", currentLikes - 1)
-                    }
-                }
-            }.await()
+            val likeDoc = likeRef.get().await()
+            if (likeDoc.exists()) {
+                firestore.runBatch { batch ->
+                    batch.delete(likeRef)
+                    batch.update(postRef, "likesCount",
+                        com.google.firebase.firestore.FieldValue.increment(-1))
+                    batch.update(postRef, "likedBy",
+                        com.google.firebase.firestore.FieldValue.arrayRemove(userId))
+                }.await()
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

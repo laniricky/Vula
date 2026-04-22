@@ -9,5 +9,7 @@ data class Post(
     val imageUrl: String? = null,
     val likesCount: Int = 0,
     val commentsCount: Int = 0,
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    // Stored as an array in Firestore; used for client-side like state
+    val likedBy: List<String> = emptyList()
 )

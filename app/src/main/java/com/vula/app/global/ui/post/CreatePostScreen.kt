@@ -8,6 +8,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -85,6 +86,20 @@ fun CreatePostScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
+                    // Clear image button
+                    IconButton(
+                        onClick = { imageUri = null },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Cancel,
+                            contentDescription = "Remove image",
+                            tint = androidx.compose.ui.graphics.Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 } else {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(
