@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext traffic to local Firebase emulator in debug builds -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.100.4.198</domain>
+    </domain-config>
+</network-security-config>

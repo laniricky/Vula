@@ -1,0 +1,216 @@
+You are an expert Android engineer. Build a production-ready Android app using:
+
+Kotlin (primary language)
+Java (legacy / compatibility modules if needed)
+C/C++ (via Android NDK only for low-level networking + hashing + performance-critical Wi-Fi discovery tasks)
+
+Architecture must be:
+
+MVVM (ViewModel + Repository + LiveData/Flow)
+Clean Architecture layered design
+Modular (global, local-network, chat modules separated)
+📱 APP OVERVIEW
+
+Build a hybrid social + messaging Android app inspired by:
+
+Instagram-style content feed (global)
+Telegram-style messaging UI (clean chat system)
+PLUS a unique Wi-Fi Local Social Mode
+🧩 CORE FEATURES
+🌍 1. GLOBAL MODE (Instagram-like)
+Features:
+User authentication (email + username)
+Profile system
+Follow / unfollow users
+Create posts:
+image
+caption
+Global feed (algorithm-free chronological feed for MVP)
+Like & comment system
+UI:
+Instagram-like feed cards
+Profile grid layout for posts
+📡 2. LOCAL MODE (Wi-Fi SOCIAL LAYER — CORE INNOVATION)
+Activation rules:
+Detect current Wi-Fi connection
+User must manually opt-in: ENABLE LOCAL MODE
+Network identification logic:
+
+Compute:
+
+network_id = SHA256(SSID + BSSID)
+
+IMPORTANT:
+SSID + BSSID access must be handled carefully:
+Android permissions: ACCESS_FINE_LOCATION + NEARBY_WIFI_DEVICES (API 33+)
+Do NOT store raw SSID publicly
+Only store hashed network_id
+Local Mode features:
+
+When enabled:
+
+Show:
+number of users on same network
+local feed
+Local feed:
+Text posts only (MVP)
+Auto-expire posts after 24 hours
+Anonymous alias system:
+e.g. “NeonTiger92”
+regenerated per network or per session
+Local interactions:
+Post message:
+“Anyone watching the game?”
+“Wi-Fi is slow 😂”
+Like / react system
+No follower system in local mode
+“People here now”
+List of anonymous users currently on same network
+No real identity shown
+💬 3. CHAT SYSTEM (Telegram-like)
+Features:
+1-to-1 messaging
+Group chats
+Message requests system:
+local users must request before DM allowed
+UI:
+Clean Telegram-style chat list
+Minimal design
+⚙️ SYSTEM ARCHITECTURE
+🔹 Modules
+
+Create modular architecture:
+
+app/
+  global/
+  local/
+  chat/
+  core/
+
+🔹 Data Layers
+Global backend:
+Firebase or custom REST API
+Users, posts, follows, messages
+Local system (NO SERVER DEPENDENCY):
+Fully peer + local device based OR hybrid backend tagged by network_id
+📡 LOCAL NETWORK ENGINE (CRITICAL PART)
+Step 1: Wi-Fi detection (Kotlin)
+
+Use Android APIs:
+
+WifiManager
+ConnectivityManager
+Step 2: Native C/C++ module (NDK)
+
+Use C++ for:
+
+Fast hashing of SSID+BSSID
+Optional peer discovery optimization
+Lightweight encryption of local payloads
+
+Example responsibilities:
+
+- SHA256 hashing
+- string normalization
+- optional multicast UDP discovery (if implemented)
+
+Step 3: Local discovery (choose approach)
+Option A (MVP recommended):
+Backend stores posts tagged with network_id
+Option B (advanced):
+Use local network broadcast:
+UDP multicast
+WebRTC data channels (future upgrade)
+🛡️ SAFETY + PRIVACY RULES (MANDATORY)
+
+Implement:
+
+Local mode OFF by default
+Manual opt-in required
+No phone/email visible in local mode
+Random alias per session/network
+Rate limiting:
+posts per hour
+messages per hour
+Block & report system
+Auto-hide abusive content
+🎨 UI REQUIREMENTS
+Design hybrid:
+From Instagram:
+media-first feed UI
+cards for posts
+profile grids
+From Telegram:
+clean chat interface
+minimal UI clutter
+fast navigation
+📦 DATABASE STRUCTURE
+Global DB:
+users
+posts
+comments
+follows
+messages
+groups
+
+Local DB:
+network_id
+local_posts
+local_users (ephemeral)
+local_reactions
+
+🚀 MVP REQUIREMENTS (VERY IMPORTANT)
+
+Do NOT overbuild.
+
+Phase 1 ONLY:
+Auth system
+Global posts (text + image optional)
+Basic chat
+Local mode:
+detect Wi-Fi
+join network
+post text
+view local feed
+
+❌ No reels
+❌ No stories
+❌ No video streaming
+❌ No complex ranking algorithms
+
+📱 TECH STACK SUMMARY
+Android:
+Kotlin (main)
+Java (support)
+Jetpack Compose OR XML (Compose recommended)
+Backend:
+Firebase OR Node.js + PostgreSQL
+Native:
+C++ (NDK) for:
+hashing
+lightweight networking utilities
+⚡ PERFORMANCE GOALS
+Local feed loads < 200ms
+Chat messages real-time (< 100ms ideally)
+App startup < 2 seconds
+🧭 PRODUCT VISION
+
+This app becomes:
+
+A social layer that activates per Wi-Fi environment
+
+Examples:
+
+hostel becomes a live chatroom
+university Wi-Fi becomes a feed
+event Wi-Fi becomes a temporary social network
+📌 FINAL INSTRUCTION TO AI
+
+Generate:
+
+full Android Studio project structure
+Kotlin MVVM implementation
+basic backend (or Firebase integration)
+Wi-Fi detection module
+local mode system
+clean UI screens (Instagram + Telegram hybrid)
