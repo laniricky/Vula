@@ -9,6 +9,7 @@ plugins {
 android {
     namespace = "com.vula.app"
     compileSdk = 34
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         applicationId = "com.vula.app"
@@ -20,6 +21,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
         }
     }
 
@@ -39,6 +45,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
