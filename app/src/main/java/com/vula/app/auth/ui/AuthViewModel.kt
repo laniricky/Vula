@@ -21,6 +21,9 @@ class AuthViewModel @Inject constructor(
     private val _resetState = MutableStateFlow<ResetState>(ResetState.Idle)
     val resetState: StateFlow<ResetState> = _resetState.asStateFlow()
 
+    val isUserLoggedIn: Boolean
+        get() = authRepository.isUserLoggedIn
+
     val currentUser = authRepository.currentUser
 
     fun login(username: String, password: String) {

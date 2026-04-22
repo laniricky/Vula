@@ -76,20 +76,19 @@ fun VulaApp(
     val currentUser      by authViewModel.currentUser.collectAsState(initial = null)
     val unreadCount      by chatViewModel.unreadCount.collectAsState()
 
+    // Determine initial route synchronously to avoid flashing the login screen
+    val startDest = remember {
+        if (authViewModel.isUserLoggedIn) Screen.Feed.route else Screen.Login.route
+    }
+
+    // Still navigate if the user logs out later during runtime
     LaunchedEffect(currentUser) {
-        when {
-            currentUser != null &&
-            (currentRoute == Screen.Login.route || currentRoute == Screen.Register.route
-                    || currentRoute == null) -> {
-                navController.navigate(Screen.Feed.route) {
-                    popUpTo(0) { inclusive = true }
-                }
-            }
-            currentUser == null &&
-            currentRoute != Screen.Login.route && currentRoute != Screen.Register.route -> {
-                navController.navigate(Screen.Login.route) {
-                    popUpTo(0) { inclusive = true }
-                }
+        if (currentUser == null && 
+            currentRoute != Screen.Login.route && 
+            currentRoute != Screen.Register.route && 
+            currentRoute != null) {
+            navController.navigate(Screen.Login.route) {
+                popUpTo(0) { inclusive = true }
             }
         }
     }
@@ -108,10 +107,11 @@ fun VulaApp(
         }
     ) { innerPadding ->
         VulaNavGraph(
-            navController   = navController,
-            currentUserId   = currentUser?.id,
-            chatViewModel   = chatViewModel,
-            modifier        = Modifier.padding(innerPadding)
+            navController    = navController,
+            currentUserId    = currentUser?.id,
+            chatViewModel    = chatViewModel,
+            startDestination = startDest,
+            modifier         = Modifier.padding(innerPadding)
         )
     }
 }
@@ -187,11 +187,12 @@ fun VulaNavGraph(
     navController: NavHostController,
     currentUserId: String?,
     chatViewModel: ChatViewModel,
+    startDestination: String,
     modifier: Modifier = Modifier
 ) {
     NavHost(
         navController    = navController,
-        startDestination = Screen.Login.route,
+        startDestination = startDestination,
         modifier         = modifier
     ) {
 
