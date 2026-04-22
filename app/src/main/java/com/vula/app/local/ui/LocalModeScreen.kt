@@ -18,12 +18,45 @@ import com.vula.app.core.ui.components.VulaTopBar
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 
 @Composable
 fun LocalModeScreen(
     viewModel: LocalViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    var permissionsDenied by remember { mutableStateOf(false) }
+
+    val requiredPermissions = mutableListOf(Manifest.permission.ACCESS_FINE_LOCATION).apply {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (allGranted) {
+            permissionsDenied = false
+            viewModel.enableLocalMode()
+        } else {
+            permissionsDenied = true
+        }
+    }
+
+    fun hasPermissions(): Boolean {
+        return requiredPermissions.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         VulaTopBar(
@@ -53,8 +86,23 @@ fun LocalModeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 32.dp)
                         )
+                        if (permissionsDenied) {
+                            Text(
+                                "Local Mode requires Location and Nearby Devices permissions to find the Wi-Fi network.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
+                        }
+                        
                         Button(
-                            onClick = { viewModel.enableLocalMode() },
+                            onClick = {
+                                if (hasPermissions()) {
+                                    viewModel.enableLocalMode()
+                                } else {
+                                    permissionLauncher.launch(requiredPermissions.toTypedArray())
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text("Enable Local Mode")
