@@ -13,13 +13,16 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -94,35 +97,46 @@ fun VulaApp(
 
 @Composable
 fun VulaBottomBar(navController: NavHostController, currentRoute: String?) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 16.dp), // Floating pill margins
+        shape = MaterialTheme.shapes.extraLarge,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface
     ) {
-        bottomNavScreens.forEach { screen ->
-            NavigationBarItem(
-                selected = currentRoute == screen.route,
-                onClick = {
-                    if (currentRoute != screen.route) {
-                        navController.navigate(screen.route) {
-                            popUpTo(Screen.Feed.route) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
+        NavigationBar(
+            containerColor = Color.Transparent, // Let the surface background show through
+            tonalElevation = 0.dp,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) {
+            bottomNavScreens.forEach { screen ->
+                val isSelected = currentRoute == screen.route
+                NavigationBarItem(
+                    selected = isSelected,
+                    onClick = {
+                        if (currentRoute != screen.route) {
+                            navController.navigate(screen.route) {
+                                popUpTo(Screen.Feed.route) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         }
-                    }
-                },
-                icon = {
-                    screen.icon?.let {
-                        Icon(imageVector = it, contentDescription = screen.title)
-                    }
-                },
-                label = { Text(screen.title) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    },
+                    icon = {
+                        screen.icon?.let {
+                            Icon(imageVector = it, contentDescription = screen.title)
+                        }
+                    },
+                    label = if (isSelected) { { Text(screen.title) } } else null, // Only show label when selected
+                    alwaysShowLabel = false,
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer
+                    )
                 )
-            )
+            }
         }
     }
 }

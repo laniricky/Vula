@@ -28,9 +28,10 @@ fun PostCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp) // Flat look, relies on background contrast
     ) {
         Column {
             Row(
@@ -42,15 +43,21 @@ fun PostCard(
                 UserAvatar(
                     imageUrl = post.authorProfileImageUrl,
                     username = post.authorUsername,
-                    size = 36.dp
+                    size = 40.dp
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = post.authorUsername,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Column {
+                    Text(
+                        text = post.authorUsername,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Just now", // Placeholder for actual timeago
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             if (post.imageUrl != null) {

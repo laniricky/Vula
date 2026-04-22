@@ -22,40 +22,45 @@ fun FeedScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        VulaTopBar(title = "Vula")
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            VulaTopBar(title = "Vula")
 
-        when (uiState) {
-            is FeedUiState.Loading -> {
-                FullScreenLoading()
-            }
-            is FeedUiState.Error -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = (uiState as FeedUiState.Error).message,
-                        color = MaterialTheme.colorScheme.error
-                    )
+            when (uiState) {
+                is FeedUiState.Loading -> {
+                    FullScreenLoading()
                 }
-            }
-            is FeedUiState.Success -> {
-                val posts = (uiState as FeedUiState.Success).posts
-                if (posts.isEmpty()) {
+                is FeedUiState.Error -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No posts yet. Be the first!")
+                        Text(
+                            text = (uiState as FeedUiState.Error).message,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 80.dp) // Bottom nav padding
-                    ) {
-                        items(posts) { post ->
-                            PostCard(
-                                post = post,
-                                currentUserId = currentUserId,
-                                onLikeClick = { viewModel.likePost(it, currentUserId) },
-                                onUnlikeClick = { viewModel.unlikePost(it, currentUserId) },
-                                onCommentClick = { /* TODO: Open comments sheet */ }
-                            )
+                }
+                is FeedUiState.Success -> {
+                    val posts = (uiState as FeedUiState.Success).posts
+                    if (posts.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No posts yet. Be the first!")
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 80.dp) // Bottom nav padding
+                        ) {
+                            items(posts) { post ->
+                                PostCard(
+                                    post = post,
+                                    currentUserId = currentUserId,
+                                    onLikeClick = { viewModel.likePost(it, currentUserId) },
+                                    onUnlikeClick = { viewModel.unlikePost(it, currentUserId) },
+                                    onCommentClick = { /* TODO: Open comments sheet */ }
+                                )
+                            }
                         }
                     }
                 }

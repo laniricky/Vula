@@ -29,25 +29,30 @@ fun ChatListScreen(
     val rooms by viewModel.roomsState.collectAsState()
     val currentUserId = viewModel.currentUserId
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        VulaTopBar(title = "Chats")
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            VulaTopBar(title = "Chats")
 
-        if (rooms.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No chats yet. Go to a user's profile to start one!", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp)
-            ) {
-                items(rooms) { room ->
-                    ChatRoomItem(
-                        room = room,
-                        currentUserId = currentUserId,
-                        onClick = { onChatClick(room.id) }
-                    )
-                    HorizontalDivider()
+            if (rooms.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("No chats yet. Go to a user's profile to start one!", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    items(rooms) { room ->
+                        ChatRoomItem(
+                            room = room,
+                            currentUserId = currentUserId,
+                            onClick = { onChatClick(room.id) }
+                        )
+                        HorizontalDivider()
+                    }
                 }
             }
         }
