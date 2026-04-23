@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 @Composable
 fun RegisterScreen(
     onNavigateToLogin: () -> Unit,
+    onRegisterSuccess: () -> Unit = {},
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     var username by remember { mutableStateOf("") }
@@ -25,6 +26,13 @@ fun RegisterScreen(
     var passwordError by remember { mutableStateOf<String?>(null) }
     
     val authState by viewModel.authState.collectAsState()
+
+    // Navigate away on success
+    LaunchedEffect(authState) {
+        if (authState is AuthState.Success) {
+            onRegisterSuccess()
+        }
+    }
 
     Column(
         modifier = Modifier

@@ -201,7 +201,12 @@ fun VulaNavGraph(
         // Auth
         composable(Screen.Login.route) {
             LoginScreen(
-                onNavigateToRegister = { navController.navigate(Screen.Register.route) }
+                onNavigateToRegister = { navController.navigate(Screen.Register.route) },
+                onLoginSuccess = {
+                    navController.navigate(Screen.Feed.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
             )
         }
         composable(Screen.Register.route) {
@@ -209,6 +214,11 @@ fun VulaNavGraph(
                 onNavigateToLogin = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                },
+                onRegisterSuccess = {
+                    navController.navigate(Screen.Feed.route) {
+                        popUpTo(0) { inclusive = true }
                     }
                 }
             )
