@@ -30,6 +30,7 @@ import com.vula.app.auth.ui.RegisterScreen
 import com.vula.app.chat.ui.ChatListScreen
 import com.vula.app.chat.ui.ChatViewModel
 import com.vula.app.chat.ui.ConversationScreen
+import com.vula.app.contacts.ui.ContactsScreen
 import com.vula.app.global.ui.feed.FeedScreen
 import com.vula.app.global.ui.post.CommentScreen
 import com.vula.app.global.ui.post.CreatePostScreen
@@ -57,6 +58,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Conversation : Screen("conversation/{roomId}", "Chat",     null) {
         fun createRoute(roomId: String) = "conversation/$roomId"
     }
+    object Contacts     : Screen("contacts",            "Contacts",   null)
 }
 
 val bottomNavScreens = listOf(
@@ -253,7 +255,21 @@ fun VulaNavGraph(
                 onUserClick  = { userId ->
                     navController.navigate(Screen.UserProfile.createRoute(userId))
                 },
+                onNavigateToContacts = {
+                    navController.navigate(Screen.Contacts.route)
+                },
                 viewModel    = chatViewModel
+            )
+        }
+
+        // Contacts List
+        composable(Screen.Contacts.route) {
+            ContactsScreen(
+                onBackClick = { navController.popBackStack() },
+                onContactClick = { contact ->
+                    // For now, just navigate back. Future: open invite or start chat if matched
+                    navController.popBackStack()
+                }
             )
         }
 

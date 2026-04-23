@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -30,17 +31,29 @@ import com.vula.app.core.util.TimeAgo
 fun ChatListScreen(
     onChatClick: (String) -> Unit,
     onUserClick: (String) -> Unit = {},
+    onNavigateToContacts: () -> Unit = {},
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val rooms by viewModel.roomsState.collectAsState()
     val requests by viewModel.incomingRequests.collectAsState()
     val currentUserId = viewModel.currentUserId
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+    Scaffold(
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToContacts,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Filled.Person, contentDescription = "Contacts")
+            }
+        }
+    ) { paddingValues ->
+        Surface(
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
             VulaTopBar(title = "Chats")
 
             if (rooms.isEmpty() && requests.isEmpty()) {
@@ -129,6 +142,7 @@ fun ChatListScreen(
             }
         }
     }
+}
 }
 
 @Composable
