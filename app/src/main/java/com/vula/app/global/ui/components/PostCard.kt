@@ -24,6 +24,7 @@ import com.vula.app.core.util.TimeAgo
 fun PostCard(
     post: Post,
     currentUserId: String,
+    contactName: String? = null,
     onLikeClick: (String) -> Unit,
     onUnlikeClick: (String) -> Unit,
     onCommentClick: (String) -> Unit,
@@ -51,13 +52,13 @@ fun PostCard(
             ) {
                 UserAvatar(
                     imageUrl = post.authorProfileImageUrl,
-                    username = post.authorUsername,
+                    username = contactName ?: post.authorUsername,
                     size = 40.dp
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = post.authorUsername,
+                        text = contactName ?: post.authorUsername,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -122,7 +123,7 @@ fun PostCard(
             if (post.caption.isNotEmpty()) {
                 Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                     Text(
-                        text = post.authorUsername,
+                        text = contactName ?: post.authorUsername,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.bodyMedium
                     )

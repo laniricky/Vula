@@ -10,6 +10,13 @@ import androidx.compose.ui.Modifier
 import com.vula.app.core.ui.theme.VulaTheme
 import dagger.hilt.android.AndroidEntryPoint
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.vula.app.core.ui.ServerDiscoveryScreen
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,9 +27,20 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    com.vula.app.navigation.VulaApp()
+                    AppRoot()
                 }
             }
         }
+    }
+}
+
+@Composable
+fun AppRoot() {
+    var isServerFound by remember { mutableStateOf(false) }
+    
+    if (!isServerFound) {
+        ServerDiscoveryScreen(onServerFound = { isServerFound = true })
+    } else {
+        com.vula.app.navigation.VulaApp()
     }
 }

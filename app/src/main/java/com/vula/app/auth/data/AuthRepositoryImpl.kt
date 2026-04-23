@@ -40,9 +40,10 @@ class AuthRepositoryImpl @Inject constructor(
         awaitClose { auth.removeAuthStateListener(listener) }
     }
 
-    override suspend fun register(username: String, password: String): Result<Unit> {
+    override suspend fun register(phoneNumber: String, username: String, password: String): Result<Unit> {
         return try {
             val lowercaseUsername = username.lowercase()
+            val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
             
             // Check if username exists
             val usernameDoc = try {
@@ -59,9 +60,8 @@ class AuthRepositoryImpl @Inject constructor(
                 return Result.failure(Exception("Username already taken"))
             }
 
-            // Create Firebase Auth user
-            // We use {username}@vula.local as a workaround for username login
-            val email = "$lowercaseUsername@vula.local"
+            // Create Firebase Auth user using phone number as email prefix
+            val email = "$phoneClean@vula.local"
             val authResult = auth.createUserWithEmailAndPassword(email, password).await()
             val userId = authResult.user?.uid ?: throw Exception("Failed to create user")
 
@@ -69,6 +69,7 @@ class AuthRepositoryImpl @Inject constructor(
             val user = User(
                 id = userId,
                 username = lowercaseUsername,
+                phoneNumber = phoneClean,
                 displayName = username,
                 createdAt = System.currentTimeMillis()
             )
@@ -87,10 +88,10 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun login(username: String, password: String): Result<Unit> {
+    override suspend fun login(phoneNumber: String, password: String): Result<Unit> {
         return try {
-            val lowercaseUsername = username.lowercase()
-            val email = "$lowercaseUsername@vula.local"
+            val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
+            val email = "$phoneClean@vula.local"
             auth.signInWithEmailAndPassword(email, password).await()
             Result.success(Unit)
         } catch (e: Exception) {
@@ -98,15 +99,14 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun resetPassword(username: String): Result<Unit> {
+    override suspend fun resetPassword(phoneNumber: String): Result<Unit> {
         return try {
-            val lowercaseUsername = username.trim().lowercase()
-            // The vula.local email convention — same trick used during login
-            val email = "$lowercaseUsername@vula.local"
+            val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
+            val email = "$phoneClean@vula.local"
             auth.sendPasswordResetEmail(email).await()
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(Exception("Could not send reset link. Check your username and try again."))
+            Result.failure(Exception("Could not send reset link. Check your phone number and try again."))
         }
     }
 

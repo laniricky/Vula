@@ -18,15 +18,12 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    // The PC's local Wi-Fi IP so both the emulator and Android device can talk to it
-    private const val EMULATOR_HOST = "10.100.4.198"
-
     @Provides
     @Singleton
     fun provideFirebaseAuth(): FirebaseAuth {
         val auth = Firebase.auth
         if (BuildConfig.DEBUG) {
-            auth.useEmulator(EMULATOR_HOST, 9099)
+            auth.useEmulator(FirebaseConfig.emulatorHost, 9099)
         }
         return auth
     }
@@ -37,7 +34,7 @@ object AppModule {
         val firestore = Firebase.firestore
         if (BuildConfig.DEBUG) {
             FirebaseFirestore.setLoggingEnabled(true)
-            firestore.useEmulator(EMULATOR_HOST, 8088)
+            firestore.useEmulator(FirebaseConfig.emulatorHost, 8088)
         }
         return firestore
     }
@@ -47,7 +44,7 @@ object AppModule {
     fun provideFirebaseStorage(): FirebaseStorage {
         val storage = Firebase.storage
         if (BuildConfig.DEBUG) {
-            storage.useEmulator(EMULATOR_HOST, 9199)
+            storage.useEmulator(FirebaseConfig.emulatorHost, 9199)
         }
         return storage
     }

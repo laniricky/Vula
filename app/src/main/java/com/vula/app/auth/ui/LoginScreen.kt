@@ -19,7 +19,7 @@ fun LoginScreen(
     onNavigateToRegister: () -> Unit,
     viewModel: AuthViewModel = hiltViewModel()
 ) {
-    var username by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showResetDialog by remember { mutableStateOf(false) }
 
@@ -29,7 +29,7 @@ fun LoginScreen(
     // Forgot password dialog
     if (showResetDialog) {
         ForgotPasswordDialog(
-            initialUsername = username,
+            initialPhoneNumber = phoneNumber,
             resetState = resetState,
             onDismiss = {
                 showResetDialog = false
@@ -62,9 +62,10 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(48.dp))
 
         OutlinedTextField(
-            value = username,
-            onValueChange = { username = it },
-            label = { Text("Username") },
+            value = phoneNumber,
+            onValueChange = { phoneNumber = it },
+            label = { Text("Phone Number") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             shape = MaterialTheme.shapes.medium,
@@ -112,7 +113,7 @@ fun LoginScreen(
         }
 
         Button(
-            onClick = { viewModel.login(username, password) },
+            onClick = { viewModel.login(phoneNumber, password) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -138,12 +139,12 @@ fun LoginScreen(
 
 @Composable
 private fun ForgotPasswordDialog(
-    initialUsername: String,
+    initialPhoneNumber: String,
     resetState: ResetState,
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit
 ) {
-    var username by remember { mutableStateOf(initialUsername) }
+    var phoneNumber by remember { mutableStateOf(initialPhoneNumber) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -159,14 +160,15 @@ private fun ForgotPasswordDialog(
                     }
                     else -> {
                         Text(
-                            "Enter your username and we'll send a password reset link to the email associated with it.",
+                            "Enter your phone number and we'll send a password reset link to the associated account.",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
-                            value = username,
-                            onValueChange = { username = it },
-                            label = { Text("Username") },
+                            value = phoneNumber,
+                            onValueChange = { phoneNumber = it },
+                            label = { Text("Phone Number") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                             shape = MaterialTheme.shapes.medium
@@ -188,8 +190,8 @@ private fun ForgotPasswordDialog(
                 TextButton(onClick = onDismiss) { Text("Done") }
             } else {
                 TextButton(
-                    onClick = { onSubmit(username) },
-                    enabled = resetState !is ResetState.Loading && username.isNotBlank()
+                    onClick = { onSubmit(phoneNumber) },
+                    enabled = resetState !is ResetState.Loading && phoneNumber.isNotBlank()
                 ) {
                     if (resetState is ResetState.Loading) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)

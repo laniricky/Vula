@@ -62,7 +62,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
 }
 
 val bottomNavScreens = listOf(
-    Screen.Feed, Screen.Local, Screen.CreatePost, Screen.Chat, Screen.Profile
+    Screen.Feed, Screen.CreatePost, Screen.Chat, Screen.Profile
 )
 
 // ─── Root App ─────────────────────────────────────────────────────────────────

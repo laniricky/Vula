@@ -26,6 +26,7 @@ fun FeedScreen(
     viewModel: FeedViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val contactMap by viewModel.contactMap.collectAsState()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -68,9 +69,11 @@ fun FeedScreen(
                             contentPadding = PaddingValues(bottom = 80.dp)
                         ) {
                             items(posts, key = { it.id }) { post ->
+                                val contactName = contactMap[post.authorId]
                                 PostCard(
                                     post = post,
                                     currentUserId = currentUserId,
+                                    contactName = contactName,
                                     onLikeClick    = { viewModel.likePost(it, currentUserId) },
                                     onUnlikeClick  = { viewModel.unlikePost(it, currentUserId) },
                                     onCommentClick = { onNavigateToComments(it) },

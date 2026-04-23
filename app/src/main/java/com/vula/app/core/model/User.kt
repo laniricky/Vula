@@ -3,6 +3,7 @@ package com.vula.app.core.model
 data class User(
     val id: String = "",
     val username: String = "",
+    val phoneNumber: String = "",
     val displayName: String = "",
     val bio: String = "",
     val profileImageUrl: String? = null,

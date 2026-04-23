@@ -26,22 +26,22 @@ class AuthViewModel @Inject constructor(
 
     val currentUser = authRepository.currentUser
 
-    fun login(username: String, password: String) {
-        if (username.isBlank() || password.isBlank()) {
-            _authState.value = AuthState.Error("Username and password cannot be empty")
+    fun login(phoneNumber: String, password: String) {
+        if (phoneNumber.isBlank() || password.isBlank()) {
+            _authState.value = AuthState.Error("Phone number and password cannot be empty")
             return
         }
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.login(username.trim(), password)
+            val result = authRepository.login(phoneNumber.trim(), password)
             result.onSuccess { _authState.value = AuthState.Success }
                 .onFailure { e -> _authState.value = AuthState.Error(e.message ?: "Login failed") }
         }
     }
 
-    fun register(username: String, password: String) {
-        if (username.isBlank() || password.isBlank()) {
-            _authState.value = AuthState.Error("Username and password cannot be empty")
+    fun register(phoneNumber: String, username: String, password: String) {
+        if (phoneNumber.isBlank() || username.isBlank() || password.isBlank()) {
+            _authState.value = AuthState.Error("Fields cannot be empty")
             return
         }
         if (password.length < 6) {
@@ -50,20 +50,20 @@ class AuthViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.register(username.trim(), password)
+            val result = authRepository.register(phoneNumber.trim(), username.trim(), password)
             result.onSuccess { _authState.value = AuthState.Success }
                 .onFailure { e -> _authState.value = AuthState.Error(e.message ?: "Registration failed") }
         }
     }
 
-    fun resetPassword(username: String) {
-        if (username.isBlank()) {
-            _resetState.value = ResetState.Error("Enter your username first")
+    fun resetPassword(phoneNumber: String) {
+        if (phoneNumber.isBlank()) {
+            _resetState.value = ResetState.Error("Enter your phone number first")
             return
         }
         viewModelScope.launch {
             _resetState.value = ResetState.Loading
-            val result = authRepository.resetPassword(username.trim())
+            val result = authRepository.resetPassword(phoneNumber.trim())
             result.onSuccess { _resetState.value = ResetState.Sent }
                 .onFailure { e -> _resetState.value = ResetState.Error(e.message ?: "Failed") }
         }

@@ -10,18 +10,23 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import com.vula.app.contacts.data.ContactSyncManager
 import javax.inject.Inject
 
 @HiltViewModel
 class FeedViewModel @Inject constructor(
-    private val postRepository: PostRepository
+    private val postRepository: PostRepository,
+    private val contactSyncManager: ContactSyncManager
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<FeedUiState>(FeedUiState.Loading)
     val uiState: StateFlow<FeedUiState> = _uiState.asStateFlow()
+    
+    val contactMap = contactSyncManager.contactMap
 
     init {
         loadFeed()
+        contactSyncManager.syncContacts()
     }
 
     private fun loadFeed() {
