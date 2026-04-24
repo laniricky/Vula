@@ -12,6 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.Icons
+import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -94,6 +97,55 @@ fun StoryCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.clearAndSetSemantics {}
+        )
+    }
+}
+
+@Composable
+fun AddStoryCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .width(72.dp)
+            .clickable { onClick() }
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Create a new story"
+            },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Avatar with Add Icon
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .clip(CircleShape)
+                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                .padding(4.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Text(
+            text = "Your Story",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

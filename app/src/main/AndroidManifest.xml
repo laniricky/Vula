@@ -11,6 +11,11 @@
     <!-- Android 13+ Wi-Fi permission -->
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    
+    <!-- Camera & Audio Permissions -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.camera.any" />
 
     <application
         android:name=".VulaApplication"

@@ -117,12 +117,19 @@ fun PostCard(
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    AsyncImage(
-                        model = post.imageUrl,
-                        contentDescription = "Post image",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+                    if (post.mediaType == "video") {
+                        VideoPlayer(
+                            videoUrl = post.imageUrl,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        AsyncImage(
+                            model = post.imageUrl,
+                            contentDescription = "Post image",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
                     // Animated heart overlay on double-tap
                     if (showHeartOverlay) {
                         androidx.compose.animation.AnimatedVisibility(

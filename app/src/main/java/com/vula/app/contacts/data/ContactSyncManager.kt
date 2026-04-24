@@ -21,6 +21,9 @@ class ContactSyncManager @Inject constructor(
     private val _contactMap = MutableStateFlow<Map<String, String>>(emptyMap())
     val contactMap: StateFlow<Map<String, String>> = _contactMap.asStateFlow()
 
+    private val _phoneToVulaIdMap = MutableStateFlow<Map<String, String>>(emptyMap())
+    val phoneToVulaIdMap: StateFlow<Map<String, String>> = _phoneToVulaIdMap.asStateFlow()
+
     fun syncContacts() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -36,6 +39,7 @@ class ContactSyncManager @Inject constructor(
 
                 val chunks = phoneNumbersToQuery.chunked(10)
                 val newContactMap = mutableMapOf<String, String>()
+                val newPhoneMap = mutableMapOf<String, String>()
 
                 for (chunk in chunks) {
                     val snapshot = firestore.collection(Constants.USERS_COLLECTION)
@@ -49,12 +53,14 @@ class ContactSyncManager @Inject constructor(
                             val contactName = phoneToNameMap[user.phoneNumber]
                             if (contactName != null) {
                                 newContactMap[user.id] = contactName
+                                newPhoneMap[user.phoneNumber] = user.id
                             }
                         }
                     }
                 }
 
                 _contactMap.value = newContactMap
+                _phoneToVulaIdMap.value = newPhoneMap
             } catch (e: SecurityException) {
                 // Permission not granted
             } catch (e: Exception) {

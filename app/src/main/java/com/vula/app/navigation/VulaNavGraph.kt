@@ -5,6 +5,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -57,8 +59,10 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Feed        : Screen("feed",                 "Global",     Icons.Filled.Home)
     object Local       : Screen("local",                "Local Mode", Icons.Filled.Wifi)
     object CreatePost  : Screen("create_post",          "Post",       Icons.Filled.AddCircle)
+    object CreateStory : Screen("create_story",         "Story",      null)
     object Chat        : Screen("chat",                 "Chat",       Icons.AutoMirrored.Filled.Chat)
     object Profile     : Screen("profile",              "Profile",    Icons.Filled.Person)
+    object Settings    : Screen("settings",             "Settings",   null)
     object EditProfile : Screen("edit_profile",         "Edit",       null)
     object StoryViewer : Screen("story/{index}",        "Story",      null) {
         fun createRoute(index: Int) = "story/$index"
@@ -110,25 +114,46 @@ fun VulaApp(
     }
 
     val showBottomBar = currentRoute in bottomNavScreens.map { it.route }
+    val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
+    val coroutineScope = rememberCoroutineScope()
 
-    Scaffold(
-        bottomBar = {
-            if (showBottomBar) {
-                VulaBottomBar(
-                    navController  = navController,
-                    currentRoute   = currentRoute,
-                    chatUnread     = unreadCount
+    androidx.compose.material3.ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            androidx.compose.material3.ModalDrawerSheet {
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.NavigationDrawerItem(
+                    label = { Text("Settings") },
+                    selected = false,
+                    onClick = {
+                        coroutineScope.launch { drawerState.close() }
+                        navController.navigate(Screen.Settings.route)
+                    },
+                    modifier = Modifier.padding(androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp))
                 )
             }
         }
-    ) { innerPadding ->
-        VulaNavGraph(
-            navController    = navController,
-            currentUserId    = currentUser?.id,
-            chatViewModel    = chatViewModel,
-            startDestination = startDest,
-            modifier         = Modifier.padding(innerPadding)
-        )
+    ) {
+        Scaffold(
+            bottomBar = {
+                if (showBottomBar) {
+                    VulaBottomBar(
+                        navController  = navController,
+                        currentRoute   = currentRoute,
+                        chatUnread     = unreadCount
+                    )
+                }
+            }
+        ) { innerPadding ->
+            VulaNavGraph(
+                navController    = navController,
+                currentUserId    = currentUser?.id,
+                chatViewModel    = chatViewModel,
+                startDestination = startDest,
+                openDrawer       = { coroutineScope.launch { drawerState.open() } },
+                modifier         = Modifier.padding(innerPadding)
+            )
+        }
     }
 }
 
@@ -210,6 +235,7 @@ fun VulaNavGraph(
     currentUserId: String?,
     chatViewModel: ChatViewModel,
     startDestination: String,
+    openDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     NavHost(
@@ -269,7 +295,11 @@ fun VulaNavGraph(
                     onNavigateToSearch   = { navController.navigate(Screen.Search.route) },
                     onNavigateToStory    = { index ->
                         navController.navigate(Screen.StoryViewer.createRoute(index))
-                    }
+                    },
+                    onNavigateToCreateStory = {
+                        navController.navigate(Screen.CreateStory.route)
+                    },
+                    onMenuClick          = openDrawer
                 )
             }
         }
@@ -293,7 +323,9 @@ fun VulaNavGraph(
 
         // Local Mode
         composable(Screen.Local.route) {
-            LocalModeScreen()
+            LocalModeScreen(
+                onMenuClick = openDrawer
+            )
         }
 
         // Create Post
@@ -304,6 +336,14 @@ fun VulaNavGraph(
                         popUpTo(Screen.Feed.route) { inclusive = true }
                     }
                 }
+            )
+        }
+
+        // Create Story
+        composable(Screen.CreateStory.route) {
+            com.vula.app.global.ui.story.CreateStoryScreen(
+                onStoryCreated = { navController.popBackStack() },
+                onBackClick = { navController.popBackStack() }
             )
         }
 
@@ -319,6 +359,7 @@ fun VulaNavGraph(
                 onNavigateToContacts = {
                     navController.navigate(Screen.Contacts.route)
                 },
+                onMenuClick  = openDrawer,
                 viewModel    = chatViewModel
             )
         }
@@ -327,7 +368,10 @@ fun VulaNavGraph(
         composable(Screen.Contacts.route) {
             ContactsScreen(
                 onBackClick    = { navController.popBackStack() },
-                onContactClick = { _ -> navController.popBackStack() }
+                onContactClick = { userId -> 
+                    navController.popBackStack() // Pop contacts list
+                    navController.navigate(Screen.UserProfile.createRoute(userId)) 
+                }
             )
         }
 
@@ -345,14 +389,25 @@ fun VulaNavGraph(
         composable(Screen.Profile.route) {
             ProfileScreen(
                 userId                = null,
-                onLogoutClick         = {
-                    navController.navigate(Screen.Login.route) {
-                        popUpTo(0) { inclusive = true }
-                    }
-                },
+                onLogoutClick         = {}, // Removed from here
                 onEditProfileClick    = { navController.navigate(Screen.EditProfile.route) },
                 onNavigateToConversation = { roomId ->
                     navController.navigate(Screen.Conversation.createRoute(roomId))
+                },
+                onMenuClick           = openDrawer
+            )
+        }
+
+        // Settings
+        composable(Screen.Settings.route) {
+            val authViewModel: AuthViewModel = hiltViewModel()
+            com.vula.app.global.ui.settings.SettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                onLogoutClick = {
+                    authViewModel.logout()
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
             )
         }

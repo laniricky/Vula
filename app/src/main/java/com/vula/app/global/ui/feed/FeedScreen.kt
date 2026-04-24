@@ -30,6 +30,8 @@ fun FeedScreen(
     onNavigateToComments: (String) -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
     onNavigateToStory: (Int) -> Unit = {},
+    onNavigateToCreateStory: () -> Unit = {},
+    onMenuClick: (() -> Unit)? = null,
     viewModel: FeedViewModel = hiltViewModel()
 ) {
     val posts = viewModel.posts.collectAsLazyPagingItems()
@@ -43,6 +45,7 @@ fun FeedScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             VulaTopBar(
                 title = "Vula",
+                onMenuClick = onMenuClick,
                 actions = {
                     IconButton(onClick = onNavigateToSearch) {
                         Icon(Icons.Default.Search, contentDescription = "Search users")
@@ -56,22 +59,23 @@ fun FeedScreen(
             ) {
                 // Stories Row
                 item {
-                    if (stories.isNotEmpty()) {
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(stories) { story ->
-                                val index = stories.indexOf(story)
-                                StoryCard(
-                                    story = story,
-                                    onClick = { onNavigateToStory(index) }
-                                )
-                            }
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            com.vula.app.core.ui.components.AddStoryCard(onClick = onNavigateToCreateStory)
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
+                        items(stories) { story ->
+                            val index = stories.indexOf(story)
+                            StoryCard(
+                                story = story,
+                                onClick = { onNavigateToStory(index) }
+                            )
+                        }
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
                 }
 
                 // Initial loading state

@@ -5,13 +5,32 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.vula.app.core.util.Constants
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid != null) {
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    FirebaseFirestore.getInstance()
+                        .collection(Constants.USERS_COLLECTION)
+                        .document(uid)
+                        .update("fcmToken", token)
+                } catch (e: Exception) {
+                    android.util.Log.e("FCM", "Failed to save token", e)
+                }
+            }
+        }
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {

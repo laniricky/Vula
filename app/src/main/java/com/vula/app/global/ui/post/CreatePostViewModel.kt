@@ -19,10 +19,10 @@ class CreatePostViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<CreatePostUiState>(CreatePostUiState.Idle)
     val uiState: StateFlow<CreatePostUiState> = _uiState.asStateFlow()
 
-    fun createPost(caption: String, imageUri: Uri?) {
+    fun createPost(caption: String, mediaUri: Uri?, mediaType: String = "image") {
         viewModelScope.launch {
             _uiState.value = CreatePostUiState.Loading
-            val result = postRepository.createPost(caption, imageUri)
+            val result = postRepository.createPost(caption, mediaUri, mediaType)
             result.onSuccess {
                 _uiState.value = CreatePostUiState.Success
             }.onFailure { e ->

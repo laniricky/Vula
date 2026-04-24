@@ -28,6 +28,7 @@ fun ProfileScreen(
     onNavigateToConversation: (String) -> Unit = {},
     onEditProfileClick: () -> Unit = {},
     onBackClick: (() -> Unit)? = null,
+    onMenuClick: (() -> Unit)? = null,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -49,16 +50,7 @@ fun ProfileScreen(
                 VulaTopBar(
                     title = state.user.username,
                     navigationIcon = onBackClick,
-                    actions = {
-                        if (state.isOwnProfile) {
-                            IconButton(onClick = {
-                                viewModel.logout()
-                                onLogoutClick()
-                            }) {
-                                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
-                            }
-                        }
-                    }
+                    onMenuClick = if (onBackClick == null) onMenuClick else null
                 )
 
                 // ── Stats row ────────────────────────────────────────────────

@@ -29,6 +29,7 @@ import androidx.core.content.ContextCompat
 
 @Composable
 fun LocalModeScreen(
+    onMenuClick: (() -> Unit)? = null,
     viewModel: LocalViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -56,6 +57,7 @@ fun LocalModeScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         VulaTopBar(
             title = "Local Mode",
+            onMenuClick = onMenuClick,
             actions = {
                 if (uiState is LocalUiState.Active) {
                     TextButton(onClick = { viewModel.disableLocalMode() }) {

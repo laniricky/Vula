@@ -25,4 +25,10 @@ abstract class GlobalModule {
     abstract fun bindFollowRepository(
         followRepositoryImpl: FollowRepositoryImpl
     ): FollowRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindStoryRepository(
+        storyRepositoryImpl: com.vula.app.global.data.StoryRepositoryImpl
+    ): com.vula.app.global.data.StoryRepository
 }

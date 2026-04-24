@@ -58,7 +58,7 @@ class PostRepositoryImpl @Inject constructor(
         awaitClose { listener.remove() }
     }
 
-    override suspend fun createPost(caption: String, imageUri: Uri?): Result<Unit> {
+    override suspend fun createPost(caption: String, mediaUri: Uri?, mediaType: String): Result<Unit> {
         return try {
             val currentUser = auth.currentUser ?: throw Exception("Not authenticated")
             val userDoc = firestore.collection(Constants.USERS_COLLECTION).document(currentUser.uid).get().await()
@@ -66,10 +66,11 @@ class PostRepositoryImpl @Inject constructor(
 
             var imageUrl: String? = null
 
-            if (imageUri != null) {
-                val imageRef = storage.reference.child("posts/${UUID.randomUUID()}.jpg")
-                imageRef.putFile(imageUri).await()
-                imageUrl = imageRef.downloadUrl.await().toString()
+            if (mediaUri != null) {
+                val extension = if (mediaType == "video") "mp4" else "jpg"
+                val mediaRef = storage.reference.child("posts/${currentUser.uid}/${UUID.randomUUID()}.$extension")
+                mediaRef.putFile(mediaUri).await()
+                imageUrl = mediaRef.downloadUrl.await().toString()
             }
 
             val postRef = firestore.collection(Constants.POSTS_COLLECTION).document()
@@ -80,6 +81,7 @@ class PostRepositoryImpl @Inject constructor(
                 authorProfileImageUrl = user.profileImageUrl,
                 caption = caption,
                 imageUrl = imageUrl,
+                mediaType = mediaType,
                 createdAt = System.currentTimeMillis()
             )
 

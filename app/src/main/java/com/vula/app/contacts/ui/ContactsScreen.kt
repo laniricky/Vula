@@ -29,7 +29,7 @@ import com.vula.app.contacts.data.Contact
 @Composable
 fun ContactsScreen(
     onBackClick: () -> Unit,
-    onContactClick: (Contact) -> Unit,
+    onContactClick: (String) -> Unit, // Takes the Vula User ID
     viewModel: ContactsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -55,8 +55,8 @@ fun ContactsScreen(
 
     val contacts by viewModel.contacts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    // Vulan user IDs as a set — populated by ContactSyncManager
-    val vulaUserIds by viewModel.vulaContactIds.collectAsState()
+    // Map of clean phone number -> Vula User ID
+    val phoneToVulaIdMap by viewModel.phoneToVulaIdMap.collectAsState()
 
     Scaffold(
         topBar = {
@@ -104,11 +104,14 @@ fun ContactsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(contacts) { contact ->
-                        val isOnVula = vulaUserIds.contains(contact.id)
+                        val cleanPhone = viewModel.cleanPhoneNumber(contact.phoneNumber)
+                        val vulaUserId = phoneToVulaIdMap[cleanPhone]
+                        val isOnVula = vulaUserId != null
+                        
                         ContactItem(
                             contact = contact,
                             isOnVula = isOnVula,
-                            onClick = { onContactClick(contact) },
+                            onClick = { if (vulaUserId != null) onContactClick(vulaUserId) },
                             onInviteClick = {
                                 // Launch SMS with invite text
                                 val smsIntent = Intent(Intent.ACTION_SENDTO).apply {

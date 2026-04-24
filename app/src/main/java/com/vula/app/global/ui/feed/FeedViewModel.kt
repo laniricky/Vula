@@ -24,6 +24,7 @@ import javax.inject.Inject
 class FeedViewModel @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val postRepository: PostRepository,
+    private val storyRepository: com.vula.app.global.data.StoryRepository,
     private val contactSyncManager: ContactSyncManager
 ) : ViewModel() {
     private val _stories = MutableStateFlow<List<Story>>(emptyList())
@@ -38,16 +39,17 @@ class FeedViewModel @Inject constructor(
 
     init {
         contactSyncManager.syncContacts()
-        loadMockStories()
+        loadStories()
     }
 
-    private fun loadMockStories() {
-        // Provide some mock stories for testing UI
-        _stories.value = listOf(
-            Story(id = "1", authorId = "a1", authorUsername = "alice", imageUrl = "https://picsum.photos/400/800?random=1", isViewed = false),
-            Story(id = "2", authorId = "b2", authorUsername = "bob", imageUrl = "https://picsum.photos/400/800?random=2", isViewed = false),
-            Story(id = "3", authorId = "c3", authorUsername = "charlie", imageUrl = "https://picsum.photos/400/800?random=3", isViewed = true)
-        )
+    private fun loadStories() {
+        viewModelScope.launch {
+            storyRepository.getStories().collect { newStories ->
+                // Filter out duplicates if multiple users posted, or group by user.
+                // For now, we just display them.
+                _stories.value = newStories
+            }
+        }
     }
 
     fun likePost(postId: String, currentUserId: String) {

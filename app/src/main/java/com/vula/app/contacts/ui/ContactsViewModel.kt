@@ -27,11 +27,13 @@ class ContactsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    // Set of local contact phone-based IDs that are matched to Vula users
-    // contactMap maps vulaUserId -> contactName; we expose the keys as "on Vula" ids
-    val vulaContactIds: StateFlow<Set<String>> = contactSyncManager.contactMap
-        .map { it.keys }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+    // Map of clean phone number -> Vula User ID
+    val phoneToVulaIdMap: StateFlow<Map<String, String>> = contactSyncManager.phoneToVulaIdMap
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    fun cleanPhoneNumber(phone: String): String {
+        return phone.replace(Regex("[^0-9+]"), "")
+    }
 
     fun loadContacts() {
         viewModelScope.launch {

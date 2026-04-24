@@ -32,6 +32,7 @@ fun ChatListScreen(
     onChatClick: (String) -> Unit,
     onUserClick: (String) -> Unit = {},
     onNavigateToContacts: () -> Unit = {},
+    onMenuClick: (() -> Unit)? = null,
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val rooms by viewModel.roomsState.collectAsState()
@@ -54,7 +55,7 @@ fun ChatListScreen(
             color = MaterialTheme.colorScheme.background
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
-            VulaTopBar(title = "Chats")
+            VulaTopBar(title = "Chats", onMenuClick = onMenuClick)
 
             if (rooms.isEmpty() && requests.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

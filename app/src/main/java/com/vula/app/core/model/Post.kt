@@ -7,6 +7,7 @@ data class Post(
     val authorProfileImageUrl: String? = null,
     val caption: String = "",
     val imageUrl: String? = null,
+    val mediaType: String = "image", // "image" or "video"
     val likesCount: Int = 0,
     val commentsCount: Int = 0,
     val createdAt: Long = 0L,

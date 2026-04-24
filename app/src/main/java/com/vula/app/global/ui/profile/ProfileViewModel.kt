@@ -38,7 +38,7 @@ class ProfileViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val currentUserId = auth.currentUser?.uid ?: throw Exception("Not logged in")
-                val targetUserId = userId ?: currentUserId
+                val targetUserId = if (userId.isNullOrBlank()) currentUserId else userId
                 val isOwnProfile = targetUserId == currentUserId
 
                 val userDoc = firestore.collection(Constants.USERS_COLLECTION)

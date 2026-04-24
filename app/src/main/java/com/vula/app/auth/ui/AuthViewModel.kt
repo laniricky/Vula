@@ -74,6 +74,10 @@ class AuthViewModel @Inject constructor(
     }
 
     fun clearResetState() { _resetState.value = ResetState.Idle }
+
+    fun logout() {
+        authRepository.logout()
+    }
 }
 
 sealed class AuthState {

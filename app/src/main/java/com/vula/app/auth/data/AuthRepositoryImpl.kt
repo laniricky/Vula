@@ -2,6 +2,7 @@ package com.vula.app.auth.data
 
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.messaging.FirebaseMessaging
 import com.vula.app.core.model.User
 import com.vula.app.core.util.Constants
 import kotlinx.coroutines.channels.awaitClose
@@ -92,7 +93,22 @@ class AuthRepositoryImpl @Inject constructor(
         return try {
             val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
             val email = "$phoneClean@vula.local"
-            auth.signInWithEmailAndPassword(email, password).await()
+            val authResult = auth.signInWithEmailAndPassword(email, password).await()
+            
+            // Save FCM token
+            val userId = authResult.user?.uid
+            if (userId != null) {
+                try {
+                    val token = FirebaseMessaging.getInstance().token.await()
+                    firestore.collection(Constants.USERS_COLLECTION)
+                        .document(userId)
+                        .update("fcmToken", token)
+                        .await()
+                } catch (e: Exception) {
+                    android.util.Log.e("VulaAuth", "Failed to save FCM token", e)
+                }
+            }
+            
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

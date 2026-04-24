@@ -5,37 +5,7 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Speech bubble body -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M22,20 L86,20 Q88,20 88,22 L88,64 Q88,66 86,66 L44,66 L34,78 L34,66 L22,66 Q20,66 20,64 L20,22 Q20,20 22,20 Z" />
-
-    <!-- Wi-Fi arc - outer -->
-    <path
-        android:fillColor="#6C3BDE"
-        android:strokeColor="#00000000"
-        android:pathData="M37,52 Q54,38 71,52"
-        android:strokeWidth="4.5"
-        android:strokeLineCap="round"
-        android:fillAlpha="0" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#6C3BDE"
-        android:pathData="M37,52 Q54,38 71,52"
-        android:strokeWidth="5"
-        android:strokeLineCap="round" />
-
-    <!-- Wi-Fi arc - middle -->
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#6C3BDE"
-        android:pathData="M43,57.5 Q54,48 65,57.5"
-        android:strokeWidth="5"
-        android:strokeLineCap="round" />
-
-    <!-- Wi-Fi dot -->
-    <path
-        android:fillColor="#6C3BDE"
-        android:pathData="M 54,62 m -3.5,0 a 3.5,3.5 0 1,0 7,0 a 3.5,3.5 0 1,0 -7,0" />
-
+        android:pathData="M 32,36 L 50,74 Q 54,82 58,74 L 76,36 L 68,36 L 54,66 L 40,36 Z" />
 </vector>

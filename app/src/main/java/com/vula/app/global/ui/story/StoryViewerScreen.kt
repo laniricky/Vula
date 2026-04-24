@@ -19,6 +19,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.vula.app.global.ui.components.VideoPlayer
 import com.vula.app.core.model.Story
 import com.vula.app.core.ui.components.UserAvatar
 import com.vula.app.core.util.TimeAgo
@@ -114,13 +115,21 @@ fun StoryViewerScreen(
                     }
                 }
         ) {
-            // Story Image
-            AsyncImage(
-                model = currentStory.imageUrl,
-                contentDescription = "Story",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+            // Story Media
+            if (currentStory.mediaType == "video") {
+                VideoPlayer(
+                    videoUrl = currentStory.imageUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    playWhenReady = !isPaused
+                )
+            } else {
+                AsyncImage(
+                    model = currentStory.imageUrl,
+                    contentDescription = "Story",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
 
             // Overlay Top Bar
             Column(

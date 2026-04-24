@@ -6,6 +6,8 @@ data class Story(
     val authorUsername: String = "",
     val authorProfileImageUrl: String? = null,
     val imageUrl: String = "",
+    val mediaType: String = "image", // "image" or "video"
     val createdAt: Long = 0L,
+    val expiresAt: Long = 0L,
     val isViewed: Boolean = false // Client-side property
 )
