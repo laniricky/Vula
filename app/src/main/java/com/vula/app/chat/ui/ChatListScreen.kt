@@ -194,12 +194,13 @@ fun ChatRoomItem(
                     else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(modifier = Modifier.height(4.dp))
+            val isOtherTyping = currentUserId != null && room.typingUsers.any { it != currentUserId }
             Text(
-                text = room.lastMessage ?: "No messages yet",
+                text = if (isOtherTyping) "Typing..." else (room.lastMessage ?: "No messages yet"),
                 style = MaterialTheme.typography.bodyMedium,
+                fontStyle = if (isOtherTyping) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
                 fontWeight = if (hasUnread) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (hasUnread) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isOtherTyping) MaterialTheme.colorScheme.primary else if (hasUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )

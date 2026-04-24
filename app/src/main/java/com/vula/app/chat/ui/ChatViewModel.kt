@@ -8,6 +8,8 @@ import com.vula.app.core.model.ChatRoom
 import com.vula.app.core.model.Message
 import com.vula.app.core.model.MessageRequest
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +33,12 @@ class ChatViewModel @Inject constructor(
 
     private val _incomingRequests = MutableStateFlow<List<MessageRequest>>(emptyList())
     val incomingRequests: StateFlow<List<MessageRequest>> = _incomingRequests.asStateFlow()
+
+    private val _currentRoom = MutableStateFlow<ChatRoom?>(null)
+    val currentRoom: StateFlow<ChatRoom?> = _currentRoom.asStateFlow()
+
+    private var typingJob: Job? = null
+    private var isTypingLocally = false
 
     /** Count of chat rooms with unread messages + pending incoming requests */
     val unreadCount: StateFlow<Int> = combine(_roomsState, _incomingRequests) { rooms, requests ->
@@ -65,6 +73,14 @@ class ChatViewModel @Inject constructor(
     fun loadMessages(chatRoomId: String) {
         viewModelScope.launch {
             chatRepository.markRoomRead(chatRoomId)
+            
+            // Observe the room itself for typing indicators
+            launch {
+                chatRepository.getChatRooms().collect { rooms ->
+                    _currentRoom.value = rooms.find { it.id == chatRoomId }
+                }
+            }
+
             chatRepository.getMessages(chatRoomId).collect { msgs ->
                 _messagesState.value = msgs
                 val uid = currentUserId
@@ -77,8 +93,29 @@ class ChatViewModel @Inject constructor(
         }
     }
 
+    fun setTyping(chatRoomId: String) {
+        if (!isTypingLocally) {
+            isTypingLocally = true
+            viewModelScope.launch { chatRepository.setTypingStatus(chatRoomId, true) }
+        }
+        typingJob?.cancel()
+        typingJob = viewModelScope.launch {
+            delay(3000) // Clear typing status after 3 seconds of inactivity
+            isTypingLocally = false
+            chatRepository.setTypingStatus(chatRoomId, false)
+        }
+    }
+
     fun sendMessage(chatRoomId: String, text: String) {
         if (text.isBlank()) return
+        
+        // Immediately clear typing status
+        typingJob?.cancel()
+        if (isTypingLocally) {
+            isTypingLocally = false
+            viewModelScope.launch { chatRepository.setTypingStatus(chatRoomId, false) }
+        }
+
         viewModelScope.launch {
             chatRepository.sendMessage(chatRoomId, text.trim())
         }

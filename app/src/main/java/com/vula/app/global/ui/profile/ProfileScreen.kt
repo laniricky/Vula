@@ -7,7 +7,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +26,7 @@ fun ProfileScreen(
     userId: String? = null,
     onLogoutClick: () -> Unit = {},
     onNavigateToConversation: (String) -> Unit = {},
+    onEditProfileClick: () -> Unit = {},
     onBackClick: (() -> Unit)? = null,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
@@ -54,7 +55,7 @@ fun ProfileScreen(
                                 viewModel.logout()
                                 onLogoutClick()
                             }) {
-                                Icon(Icons.Default.ExitToApp, contentDescription = "Logout")
+                                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Logout")
                             }
                         }
                     }
@@ -104,7 +105,7 @@ fun ProfileScreen(
                     .fillMaxWidth()) {
                     if (state.isOwnProfile) {
                         OutlinedButton(
-                            onClick = { /* TODO: Edit profile */ },
+                            onClick = onEditProfileClick,
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("Edit Profile") }
                     } else {

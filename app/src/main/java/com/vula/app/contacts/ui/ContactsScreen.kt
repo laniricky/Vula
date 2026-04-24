@@ -1,7 +1,9 @@
 package com.vula.app.contacts.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -9,7 +11,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,8 +36,7 @@ fun ContactsScreen(
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.READ_CONTACTS
+                context, Manifest.permission.READ_CONTACTS
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
@@ -44,21 +45,18 @@ fun ContactsScreen(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
         hasPermission = isGranted
-        if (isGranted) {
-            viewModel.loadContacts()
-        }
+        if (isGranted) viewModel.loadContacts()
     }
 
     LaunchedEffect(hasPermission) {
-        if (hasPermission) {
-            viewModel.loadContacts()
-        } else {
-            permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
-        }
+        if (hasPermission) viewModel.loadContacts()
+        else permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
     }
 
     val contacts by viewModel.contacts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    // Vulan user IDs as a set — populated by ContactSyncManager
+    val vulaUserIds by viewModel.vulaContactIds.collectAsState()
 
     Scaffold(
         topBar = {
@@ -66,7 +64,7 @@ fun ContactsScreen(
                 title = { Text("Contacts") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -77,37 +75,50 @@ fun ContactsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            if (!hasPermission) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Contact permission is required to find your friends.",
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Button(onClick = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) }) {
-                        Text("Grant Permission")
+            when {
+                !hasPermission -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Contact permission is required to find your friends.",
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Button(onClick = { permissionLauncher.launch(Manifest.permission.READ_CONTACTS) }) {
+                            Text("Grant Permission")
+                        }
                     }
                 }
-            } else if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (contacts.isEmpty()) {
-                Text(
+                isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                contacts.isEmpty() -> Text(
                     text = "No contacts found.",
                     modifier = Modifier.align(Alignment.Center),
                     style = MaterialTheme.typography.bodyLarge
                 )
-            } else {
-                LazyColumn(
+                else -> LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     items(contacts) { contact ->
-                        ContactItem(contact = contact, onClick = { onContactClick(contact) })
+                        val isOnVula = vulaUserIds.contains(contact.id)
+                        ContactItem(
+                            contact = contact,
+                            isOnVula = isOnVula,
+                            onClick = { onContactClick(contact) },
+                            onInviteClick = {
+                                // Launch SMS with invite text
+                                val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
+                                    data = Uri.parse("smsto:${contact.phoneNumber}")
+                                    putExtra("sms_body",
+                                        "Hey ${contact.name}! I'm using Vula. Join me: https://vulaapp.com/download")
+                                }
+                                context.startActivity(smsIntent)
+                            }
+                        )
                     }
                 }
             }
@@ -116,11 +127,16 @@ fun ContactsScreen(
 }
 
 @Composable
-fun ContactItem(contact: Contact, onClick: () -> Unit) {
+fun ContactItem(
+    contact: Contact,
+    isOnVula: Boolean,
+    onClick: () -> Unit,
+    onInviteClick: () -> Unit
+) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+        modifier = Modifier.fillMaxWidth().then(
+            if (isOnVula) Modifier.clickable { onClick() } else Modifier
+        ),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )
@@ -128,25 +144,25 @@ fun ContactItem(contact: Contact, onClick: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(
-                modifier = Modifier.size(48.dp),
+                modifier = Modifier.size(44.dp),
                 shape = MaterialTheme.shapes.extraLarge,
-                color = MaterialTheme.colorScheme.primaryContainer
+                color = if (isOnVula) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceVariant
             ) {
                 Icon(
                     imageVector = Icons.Filled.Person,
                     contentDescription = null,
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .fillMaxSize(),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    modifier = Modifier.padding(10.dp).fillMaxSize(),
+                    tint = if (isOnVula) MaterialTheme.colorScheme.onPrimaryContainer
+                           else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = contact.name,
                     style = MaterialTheme.typography.titleMedium,
@@ -154,14 +170,23 @@ fun ContactItem(contact: Contact, onClick: () -> Unit) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = contact.phoneNumber,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = if (isOnVula) "On Vula ✓" else contact.phoneNumber,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isOnVula) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (!isOnVula) {
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedButton(
+                    onClick = onInviteClick,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                ) {
+                    Text("Invite", style = MaterialTheme.typography.labelMedium)
+                }
             }
         }
     }

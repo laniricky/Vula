@@ -1,13 +1,16 @@
 package com.vula.app.navigation
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Wifi
@@ -16,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -31,34 +35,45 @@ import com.vula.app.chat.ui.ChatListScreen
 import com.vula.app.chat.ui.ChatViewModel
 import com.vula.app.chat.ui.ConversationScreen
 import com.vula.app.contacts.ui.ContactsScreen
+import com.vula.app.core.data.PreferencesDataStore
+import com.vula.app.core.ui.OnboardingScreen
 import com.vula.app.global.ui.feed.FeedScreen
 import com.vula.app.global.ui.post.CommentScreen
 import com.vula.app.global.ui.post.CreatePostScreen
+import com.vula.app.global.ui.profile.EditProfileScreen
 import com.vula.app.global.ui.profile.ProfileScreen
 import com.vula.app.global.ui.search.SearchScreen
+import com.vula.app.global.ui.story.StoryViewerScreen
 import com.vula.app.local.ui.LocalModeScreen
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 // ─── Route Definitions ────────────────────────────────────────────────────────
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector?) {
-    object Login        : Screen("login",               "Login",      null)
-    object Register     : Screen("register",            "Register",   null)
-    object Feed         : Screen("feed",                "Global",     Icons.Filled.Home)
-    object Local        : Screen("local",               "Local Mode", Icons.Filled.Wifi)
-    object CreatePost   : Screen("create_post",         "Post",       Icons.Filled.AddCircle)
-    object Chat         : Screen("chat",                "Chat",       Icons.Filled.Chat)
-    object Profile      : Screen("profile",             "Profile",    Icons.Filled.Person)
-    object Search       : Screen("search",              "Search",     null)
-    object Comments     : Screen("comments/{postId}",   "Comments",   null) {
+    object Onboarding  : Screen("onboarding",           "Welcome",    null)
+    object Login       : Screen("login",                "Login",      null)
+    object Register    : Screen("register",             "Register",   null)
+    object Feed        : Screen("feed",                 "Global",     Icons.Filled.Home)
+    object Local       : Screen("local",                "Local Mode", Icons.Filled.Wifi)
+    object CreatePost  : Screen("create_post",          "Post",       Icons.Filled.AddCircle)
+    object Chat        : Screen("chat",                 "Chat",       Icons.AutoMirrored.Filled.Chat)
+    object Profile     : Screen("profile",              "Profile",    Icons.Filled.Person)
+    object EditProfile : Screen("edit_profile",         "Edit",       null)
+    object StoryViewer : Screen("story/{index}",        "Story",      null) {
+        fun createRoute(index: Int) = "story/$index"
+    }
+    object Search      : Screen("search",               "Search",     null)
+    object Comments    : Screen("comments/{postId}",    "Comments",   null) {
         fun createRoute(postId: String) = "comments/$postId"
     }
-    object UserProfile  : Screen("user/{userId}",       "Profile",    null) {
+    object UserProfile : Screen("user/{userId}",        "Profile",    null) {
         fun createRoute(userId: String) = "user/$userId"
     }
-    object Conversation : Screen("conversation/{roomId}", "Chat",     null) {
+    object Conversation: Screen("conversation/{roomId}","Chat",       null) {
         fun createRoute(roomId: String) = "conversation/$roomId"
     }
-    object Contacts     : Screen("contacts",            "Contacts",   null)
+    object Contacts    : Screen("contacts",             "Contacts",   null)
 }
 
 val bottomNavScreens = listOf(
@@ -70,24 +85,23 @@ val bottomNavScreens = listOf(
 @Composable
 fun VulaApp(
     authViewModel: AuthViewModel = hiltViewModel(),
-    chatViewModel: ChatViewModel  = hiltViewModel()   // activity-scoped for unread count
+    chatViewModel: ChatViewModel  = hiltViewModel()
 ) {
-    val navController    = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute     = navBackStackEntry?.destination?.route
-    val currentUser      by authViewModel.currentUser.collectAsState(initial = null)
-    val unreadCount      by chatViewModel.unreadCount.collectAsState()
+    val navController      = rememberNavController()
+    val navBackStackEntry  by navController.currentBackStackEntryAsState()
+    val currentRoute       = navBackStackEntry?.destination?.route
+    val currentUser        by authViewModel.currentUser.collectAsState(initial = null)
+    val unreadCount        by chatViewModel.unreadCount.collectAsState()
 
-    // Determine initial route synchronously to avoid flashing the login screen
     val startDest = remember {
         if (authViewModel.isUserLoggedIn) Screen.Feed.route else Screen.Login.route
     }
 
-    // Still navigate if the user logs out later during runtime
     LaunchedEffect(currentUser) {
-        if (currentUser == null && 
-            currentRoute != Screen.Login.route && 
-            currentRoute != Screen.Register.route && 
+        if (currentUser == null &&
+            currentRoute != Screen.Login.route &&
+            currentRoute != Screen.Register.route &&
+            currentRoute != Screen.Onboarding.route &&
             currentRoute != null) {
             navController.navigate(Screen.Login.route) {
                 popUpTo(0) { inclusive = true }
@@ -118,7 +132,7 @@ fun VulaApp(
     }
 }
 
-// ─── Bottom Bar ───────────────────────────────────────────────────────────────
+// ─── Bottom Bar with animated tab scaling ─────────────────────────────────────
 
 @Composable
 fun VulaBottomBar(
@@ -127,18 +141,27 @@ fun VulaBottomBar(
     chatUnread: Int
 ) {
     Surface(
-        modifier      = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-        shape         = MaterialTheme.shapes.extraLarge,
+        modifier        = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+        shape           = MaterialTheme.shapes.extraLarge,
         shadowElevation = 8.dp,
-        color         = MaterialTheme.colorScheme.surface
+        color           = MaterialTheme.colorScheme.surface
     ) {
         NavigationBar(
-            containerColor  = Color.Transparent,
-            tonalElevation  = 0.dp,
-            modifier        = Modifier.padding(horizontal = 8.dp)
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+            modifier       = Modifier.padding(horizontal = 8.dp)
         ) {
             bottomNavScreens.forEach { screen ->
                 val isSelected = currentRoute == screen.route
+                // Animated scale for selected tab
+                val scale by animateFloatAsState(
+                    targetValue = if (isSelected) 1.18f else 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness    = Spring.StiffnessMedium
+                    ),
+                    label = "tab_scale"
+                )
                 NavigationBarItem(
                     selected = isSelected,
                     onClick  = {
@@ -152,19 +175,16 @@ fun VulaBottomBar(
                     },
                     icon = {
                         screen.icon?.let { icon ->
-                            // Show badge on Chat tab when there are unread items
                             if (screen == Screen.Chat && chatUnread > 0) {
                                 BadgedBox(badge = {
-                                    Badge {
-                                        Text(
-                                            if (chatUnread > 9) "9+" else "$chatUnread"
-                                        )
-                                    }
+                                    Badge { Text(if (chatUnread > 9) "9+" else "$chatUnread") }
                                 }) {
-                                    Icon(icon, contentDescription = screen.title)
+                                    Icon(icon, contentDescription = screen.title,
+                                        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
                                 }
                             } else {
-                                Icon(icon, contentDescription = screen.title)
+                                Icon(icon, contentDescription = screen.title,
+                                    modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
                             }
                         }
                     },
@@ -198,6 +218,17 @@ fun VulaNavGraph(
         modifier         = modifier
     ) {
 
+        // Onboarding
+        composable(Screen.Onboarding.route) {
+            OnboardingScreen(
+                onFinished = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.Onboarding.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
         // Auth
         composable(Screen.Login.route) {
             LoginScreen(
@@ -224,7 +255,7 @@ fun VulaNavGraph(
             )
         }
 
-        // Feed – with Search icon + comment / profile nav
+        // Feed
         composable(Screen.Feed.route) {
             currentUserId?.let { uid ->
                 FeedScreen(
@@ -235,9 +266,29 @@ fun VulaNavGraph(
                     onNavigateToComments = { postId ->
                         navController.navigate(Screen.Comments.createRoute(postId))
                     },
-                    onNavigateToSearch   = { navController.navigate(Screen.Search.route) }
+                    onNavigateToSearch   = { navController.navigate(Screen.Search.route) },
+                    onNavigateToStory    = { index ->
+                        navController.navigate(Screen.StoryViewer.createRoute(index))
+                    }
                 )
             }
+        }
+
+        // Story Viewer
+        composable(Screen.StoryViewer.route) { backStackEntry ->
+            val indexStr = backStackEntry.arguments?.getString("index") ?: "0"
+            val index = indexStr.toIntOrNull() ?: 0
+            val parentEntry = remember(backStackEntry) {
+                navController.getBackStackEntry(Screen.Feed.route)
+            }
+            val feedViewModel: com.vula.app.global.ui.feed.FeedViewModel = hiltViewModel(parentEntry)
+            val stories by feedViewModel.stories.collectAsState()
+            
+            StoryViewerScreen(
+                stories = stories,
+                initialIndex = index,
+                onDismiss = { navController.popBackStack() }
+            )
         }
 
         // Local Mode
@@ -256,7 +307,7 @@ fun VulaNavGraph(
             )
         }
 
-        // Chat list – pass shared chatViewModel so unread state is consistent
+        // Chat list
         composable(Screen.Chat.route) {
             ChatListScreen(
                 onChatClick  = { roomId ->
@@ -275,11 +326,8 @@ fun VulaNavGraph(
         // Contacts List
         composable(Screen.Contacts.route) {
             ContactsScreen(
-                onBackClick = { navController.popBackStack() },
-                onContactClick = { contact ->
-                    // For now, just navigate back. Future: open invite or start chat if matched
-                    navController.popBackStack()
-                }
+                onBackClick    = { navController.popBackStack() },
+                onContactClick = { _ -> navController.popBackStack() }
             )
         }
 
@@ -296,19 +344,27 @@ fun VulaNavGraph(
         // Own Profile
         composable(Screen.Profile.route) {
             ProfileScreen(
-                userId                   = null,
-                onLogoutClick            = {
+                userId                = null,
+                onLogoutClick         = {
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 },
+                onEditProfileClick    = { navController.navigate(Screen.EditProfile.route) },
                 onNavigateToConversation = { roomId ->
                     navController.navigate(Screen.Conversation.createRoute(roomId))
                 }
             )
         }
 
-        // Another user's profile (navigated-to from feed, chat, search)
+        // Edit Profile
+        composable(Screen.EditProfile.route) {
+            EditProfileScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+
+        // Another user's profile
         composable(Screen.UserProfile.route) { backStackEntry ->
             val userId = backStackEntry.arguments?.getString("userId") ?: ""
             ProfileScreen(

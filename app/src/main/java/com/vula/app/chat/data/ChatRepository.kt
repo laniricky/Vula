@@ -11,6 +11,7 @@ interface ChatRepository {
     fun getMessages(chatRoomId: String): Flow<List<Message>>
     suspend fun sendMessage(chatRoomId: String, text: String): Result<Unit>
     suspend fun markMessageRead(chatRoomId: String, messageId: String): Result<Unit>
+    suspend fun setTypingStatus(chatRoomId: String, isTyping: Boolean): Result<Unit>
     // Read receipts / unread
     suspend fun markRoomRead(chatRoomId: String): Result<Unit>
     // Message requests

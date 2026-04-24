@@ -141,10 +141,18 @@ fun LocalActiveContent(state: LocalUiState.Active, viewModel: LocalViewModel) {
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer)
             }
-            Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                Text("${state.peopleHere.size} here",
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(horizontal = 4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(16.dp).padding(end = 4.dp)
+                )
+                Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                    Text("${state.peopleHere.size} here",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(horizontal = 4.dp))
+                }
             }
         }
 
@@ -243,21 +251,37 @@ private val REACTION_EMOJIS = listOf("👍", "😂", "🔥", "❤️", "😮")
 fun LocalPostCard(post: LocalPost, onReact: (String) -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        shape = MaterialTheme.shapes.large
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(post.alias, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary)
-                Text(TimeAgo.format(post.createdAt), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            MaterialTheme.colorScheme.secondaryContainer,
+                            RoundedCornerShape(20.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(post.alias.take(1).uppercase(), color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(post.alias, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary)
+                    Text(TimeAgo.format(post.createdAt), style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(post.text, style = MaterialTheme.typography.bodyLarge)
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // ── Emoji reaction row ───────────────────────────────────────────
             Row(

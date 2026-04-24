@@ -31,7 +31,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -72,6 +73,9 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     
+    // Paging 3
+    implementation("androidx.paging:paging-compose:3.2.1")
+    
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
@@ -87,6 +91,9 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore-ktx")
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // DataStore Preferences
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
 
     // Coil
     implementation("io.coil-kt:coil-compose:2.5.0")

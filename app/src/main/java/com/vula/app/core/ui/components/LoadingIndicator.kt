@@ -15,7 +15,7 @@ fun FullScreenLoading() {
         contentAlignment = Alignment.Center
     ) {
         CircularProgressIndicator(
-            color = MaterialTheme.colorScheme.secondary
+            color = MaterialTheme.colorScheme.primary
         )
     }
 }

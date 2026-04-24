@@ -2,6 +2,7 @@ package com.vula.app.global.ui.feed
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -13,7 +14,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.vula.app.core.ui.components.FullScreenLoading
+import com.vula.app.core.ui.components.SkeletonPostCard
+import com.vula.app.core.ui.components.StoryCard
 import com.vula.app.core.ui.components.VulaTopBar
 import com.vula.app.global.ui.components.PostCard
 
@@ -23,9 +29,11 @@ fun FeedScreen(
     onNavigateToProfile: (String) -> Unit = {},
     onNavigateToComments: (String) -> Unit = {},
     onNavigateToSearch: () -> Unit = {},
+    onNavigateToStory: (Int) -> Unit = {},
     viewModel: FeedViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val posts = viewModel.posts.collectAsLazyPagingItems()
+    val stories by viewModel.stories.collectAsState()
     val contactMap by viewModel.contactMap.collectAsState()
 
     Surface(
@@ -42,20 +50,39 @@ fun FeedScreen(
                 }
             )
 
-            when (uiState) {
-                is FeedUiState.Loading -> FullScreenLoading()
-                is FeedUiState.Error -> {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = (uiState as FeedUiState.Error).message,
-                            color = MaterialTheme.colorScheme.error
-                        )
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                // Stories Row
+                item {
+                    if (stories.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            items(stories) { story ->
+                                val index = stories.indexOf(story)
+                                StoryCard(
+                                    story = story,
+                                    onClick = { onNavigateToStory(index) }
+                                )
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 1.dp)
                     }
                 }
-                is FeedUiState.Success -> {
-                    val posts = (uiState as FeedUiState.Success).posts
-                    if (posts.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+                // Initial loading state
+                if (posts.loadState.refresh is LoadState.Loading) {
+                    items(3) { SkeletonPostCard() }
+                }
+
+                // Empty state
+                if (posts.loadState.refresh is LoadState.NotLoading && posts.itemCount == 0) {
+                    item {
+                        Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("📸", style = MaterialTheme.typography.displayMedium)
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -63,23 +90,34 @@ fun FeedScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(bottom = 80.dp)
-                        ) {
-                            items(posts, key = { it.id }) { post ->
-                                val contactName = contactMap[post.authorId]
-                                PostCard(
-                                    post = post,
-                                    currentUserId = currentUserId,
-                                    contactName = contactName,
-                                    onLikeClick    = { viewModel.likePost(it, currentUserId) },
-                                    onUnlikeClick  = { viewModel.unlikePost(it, currentUserId) },
-                                    onCommentClick = { onNavigateToComments(it) },
-                                    onUserClick    = { onNavigateToProfile(it) }
-                                )
-                            }
+                    }
+                }
+
+                // Feed Posts
+                items(
+                    count = posts.itemCount,
+                    key = posts.itemKey { it.id }
+                ) { index ->
+                    val post = posts[index]
+                    if (post != null) {
+                        val contactName = contactMap[post.authorId]
+                        PostCard(
+                            post = post,
+                            currentUserId = currentUserId,
+                            contactName = contactName,
+                            onLikeClick    = { viewModel.likePost(it, currentUserId) },
+                            onUnlikeClick  = { viewModel.unlikePost(it, currentUserId) },
+                            onCommentClick = { onNavigateToComments(it) },
+                            onUserClick    = { onNavigateToProfile(it) }
+                        )
+                    }
+                }
+
+                // Append loading state
+                if (posts.loadState.append is LoadState.Loading) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
                         }
                     }
                 }

@@ -145,6 +145,22 @@ class ChatRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun setTypingStatus(chatRoomId: String, isTyping: Boolean): Result<Unit> {
+        return try {
+            val currentUserId = auth.currentUser?.uid ?: return Result.success(Unit)
+            val roomRef = firestore.collection(Constants.CHAT_ROOMS_COLLECTION).document(chatRoomId)
+            
+            if (isTyping) {
+                roomRef.update("typingUsers", com.google.firebase.firestore.FieldValue.arrayUnion(currentUserId)).await()
+            } else {
+                roomRef.update("typingUsers", com.google.firebase.firestore.FieldValue.arrayRemove(currentUserId)).await()
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     // ─── Message Requests ─────────────────────────────────────────────────────
 
     override suspend fun sendMessageRequest(

@@ -11,5 +11,12 @@ data class Post(
     val commentsCount: Int = 0,
     val createdAt: Long = 0L,
     // Stored as an array in Firestore; used for client-side like state
-    val likedBy: List<String> = emptyList()
+    val likedBy: List<String> = emptyList(),
+    // Inline comment preview
+    val topComment: CommentPreview? = null
+)
+
+data class CommentPreview(
+    val username: String = "",
+    val text: String = ""
 )

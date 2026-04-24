@@ -12,7 +12,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.vula.app.core.model.Message
 
@@ -24,8 +27,12 @@ fun ConversationScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val messages by viewModel.messagesState.collectAsState()
+    val currentRoom by viewModel.currentRoom.collectAsState()
     val currentUserId = viewModel.currentUserId
     var textInput by remember { mutableStateOf("") }
+    
+    val otherParticipantsTyping = currentRoom?.typingUsers?.filter { it != currentUserId } ?: emptyList()
+    val isOtherTyping = otherParticipantsTyping.isNotEmpty()
 
     LaunchedEffect(chatRoomId) {
         viewModel.loadMessages(chatRoomId)
@@ -56,8 +63,22 @@ fun ConversationScreen(
                 reverseLayout = true
             ) {
                 items(messages.reversed()) { msg ->
-                    MessageBubble(message = msg, isMe = msg.senderId == currentUserId)
+                    val isMe = msg.senderId == currentUserId
+                    // If the other user's ID is in the readBy list, it's read by them
+                    val isReadByOther = currentRoom?.participants?.filter { it != currentUserId }?.any { msg.readBy.contains(it) } ?: false
+                    MessageBubble(message = msg, isMe = isMe, isRead = isReadByOther)
                 }
+            }
+
+            // ── Typing Indicator ───────────────────────────────────────────
+            androidx.compose.animation.AnimatedVisibility(visible = isOtherTyping) {
+                Text(
+                    text = "Typing...",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontStyle = FontStyle.Italic,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                )
             }
 
             Row(
@@ -69,7 +90,10 @@ fun ConversationScreen(
             ) {
                 OutlinedTextField(
                     value = textInput,
-                    onValueChange = { textInput = it },
+                    onValueChange = { 
+                        textInput = it
+                        if (it.isNotEmpty()) viewModel.setTyping(chatRoomId)
+                    },
                     placeholder = { Text("Message...") },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(24.dp),
@@ -95,12 +119,12 @@ fun ConversationScreen(
 }
 
 @Composable
-fun MessageBubble(message: Message, isMe: Boolean) {
-    Row(
+fun MessageBubble(message: Message, isMe: Boolean, isRead: Boolean) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
-        horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start
+        horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
     ) {
         Box(
             modifier = Modifier
@@ -119,6 +143,16 @@ fun MessageBubble(message: Message, isMe: Boolean) {
             Text(
                 text = message.text,
                 color = if (isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        if (isMe) {
+            Text(
+                text = if (isRead) "Read ✓✓" else "✓",
+                fontSize = 10.sp,
+                color = if (isRead) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                textAlign = TextAlign.End,
+                modifier = Modifier.padding(end = 4.dp, top = 2.dp)
             )
         }
     }

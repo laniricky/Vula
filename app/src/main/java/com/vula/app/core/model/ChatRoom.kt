@@ -10,5 +10,7 @@ data class ChatRoom(
     val lastMessageSenderId: String? = null,
     // Participant IDs who haven't read the latest message
     val unreadFor: List<String> = emptyList(),
+    // IDs of users currently typing
+    val typingUsers: List<String> = emptyList(),
     val createdAt: Long = 0L
 )
