@@ -83,3 +83,6 @@ node_modules/
 !releases/
 !releases/*.apk
 !releases/**/*.apk
+
+jdk.zip
+jdk-17/
