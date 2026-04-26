@@ -1,5 +1,7 @@
 package com.vula.app.navigation
 
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -26,10 +28,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.vula.app.auth.ui.AuthViewModel
 import com.vula.app.auth.ui.LoginScreen
 import com.vula.app.auth.ui.RegisterScreen
@@ -75,7 +79,16 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
         fun createRoute(userId: String) = "user/$userId"
     }
     object Conversation: Screen("conversation/{roomId}","Chat",       null) {
-        fun createRoute(roomId: String) = "conversation/$roomId"
+        fun createRoute(roomId: String, replyContext: String? = null, contactName: String? = null): String {
+            var route = "conversation/$roomId"
+            val params = buildList {
+                if (replyContext != null) add("replyContext=${java.net.URLEncoder.encode(replyContext, "UTF-8")}")
+                if (contactName != null) add("contactName=${java.net.URLEncoder.encode(contactName, "UTF-8")}")
+            }
+            if (params.isNotEmpty()) route += "?${params.joinToString("&")}"
+            return route
+        }
+        val routeWithArgs = "conversation/{roomId}?replyContext={replyContext}&contactName={contactName}"
     }
     object Contacts    : Screen("contacts",             "Contacts",   null)
 }
@@ -229,6 +242,7 @@ fun VulaBottomBar(
 
 // ─── Nav Graph ────────────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun VulaNavGraph(
     navController: NavHostController,
@@ -238,6 +252,7 @@ fun VulaNavGraph(
     openDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    SharedTransitionLayout {
     NavHost(
         navController    = navController,
         startDestination = startDestination,
@@ -313,11 +328,25 @@ fun VulaNavGraph(
             }
             val feedViewModel: com.vula.app.global.ui.feed.FeedViewModel = hiltViewModel(parentEntry)
             val stories by feedViewModel.stories.collectAsState()
-            
+
             StoryViewerScreen(
                 stories = stories,
                 initialIndex = index,
-                onDismiss = { navController.popBackStack() }
+                onDismiss = { navController.popBackStack() },
+                onReplyToStory = { authorUserId, message ->
+                    // Create or find DM room, send the message, navigate
+                    chatViewModel.createDirectChat(authorUserId) { roomId ->
+                        if (roomId != null) {
+                            chatViewModel.sendMessage(roomId, message)
+                            navController.navigate(
+                                Screen.Conversation.createRoute(
+                                    roomId = roomId,
+                                    replyContext = null
+                                )
+                            )
+                        }
+                    }
+                }
             )
         }
 
@@ -368,20 +397,44 @@ fun VulaNavGraph(
         composable(Screen.Contacts.route) {
             ContactsScreen(
                 onBackClick    = { navController.popBackStack() },
-                onContactClick = { userId -> 
-                    navController.popBackStack() // Pop contacts list
-                    navController.navigate(Screen.UserProfile.createRoute(userId)) 
+                onContactClick = { userId, richStatus, contactName ->
+                    chatViewModel.createDirectChat(userId) { roomId ->
+                        if (roomId != null) {
+                            navController.navigate(
+                                Screen.Conversation.createRoute(
+                                    roomId      = roomId,
+                                    replyContext = richStatus,
+                                    contactName  = contactName
+                                )
+                            )
+                        }
+                    }
                 }
             )
         }
 
         // Conversation
-        composable(Screen.Conversation.route) { backStackEntry ->
-            val roomId = backStackEntry.arguments?.getString("roomId") ?: ""
+        composable(
+            route = Screen.Conversation.routeWithArgs,
+            arguments = listOf(
+                navArgument("roomId") { type = NavType.StringType },
+                navArgument("replyContext") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("contactName") { type = NavType.StringType; nullable = true; defaultValue = null }
+            )
+        ) { backStackEntry ->
+            val roomId      = backStackEntry.arguments?.getString("roomId") ?: ""
+            val rawCtx      = backStackEntry.arguments?.getString("replyContext")
+            val rawName     = backStackEntry.arguments?.getString("contactName")
+            val replyCtx    = rawCtx?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            val contactName = rawName?.let { java.net.URLDecoder.decode(it, "UTF-8") }
             ConversationScreen(
-                chatRoomId  = roomId,
-                onBackClick = { navController.popBackStack() },
-                viewModel   = chatViewModel
+                chatRoomId              = roomId,
+                onBackClick             = { navController.popBackStack() },
+                replyContext            = replyCtx,
+                contactName             = contactName,
+                sharedTransitionScope   = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
+                viewModel               = chatViewModel
             )
         }
 
@@ -450,4 +503,5 @@ fun VulaNavGraph(
             )
         }
     }
+    } // end SharedTransitionLayout
 }

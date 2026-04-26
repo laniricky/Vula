@@ -36,6 +36,11 @@ object AppModule {
             FirebaseFirestore.setLoggingEnabled(true)
             firestore.useEmulator(FirebaseConfig.emulatorHost, 8088)
         }
+        @Suppress("DEPRECATION")
+        firestore.firestoreSettings = com.google.firebase.firestore.FirebaseFirestoreSettings.Builder()
+            .setPersistenceEnabled(true)
+            .setCacheSizeBytes(com.google.firebase.firestore.FirebaseFirestoreSettings.CACHE_SIZE_UNLIMITED)
+            .build()
         return firestore
     }
 

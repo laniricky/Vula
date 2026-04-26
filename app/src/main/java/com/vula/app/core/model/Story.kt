@@ -10,4 +10,7 @@ data class Story(
     val createdAt: Long = 0L,
     val expiresAt: Long = 0L,
     val isViewed: Boolean = false // Client-side property
-)
+) {
+    // Alias for clarity in the Story-to-Chat funnel
+    val authorUserId: String get() = authorId
+}

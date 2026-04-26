@@ -1,16 +1,11 @@
 package com.vula.app.core.util
 
+import java.security.MessageDigest
+
 object HashUtils {
-    init {
-        System.loadLibrary("vula-native")
-    }
-
-    /**
-     * Native C++ implementation for extremely fast SSID+BSSID hashing.
-     */
-    external fun hashNetworkId(input: String): String
-
     fun sha256(input: String): String {
-        return hashNetworkId(input)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hash = digest.digest(input.toByteArray(Charsets.UTF_8))
+        return hash.joinToString("") { "%02x".format(it) }
     }
 }

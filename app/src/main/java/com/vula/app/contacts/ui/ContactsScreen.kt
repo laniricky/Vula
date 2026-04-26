@@ -6,13 +6,15 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,15 +26,18 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.vula.app.contacts.data.Contact
+import com.vula.app.contacts.ui.components.DynamicContactRing
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ContactsScreen(
     onBackClick: () -> Unit,
-    onContactClick: (String) -> Unit, // Takes the Vula User ID
+    onContactClick: (userId: String, richStatus: String?, contactName: String) -> Unit,
     viewModel: ContactsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
+    var showRadar by remember { mutableStateOf(false) }
+
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -53,18 +58,26 @@ fun ContactsScreen(
         else permissionLauncher.launch(Manifest.permission.READ_CONTACTS)
     }
 
-    val contacts by viewModel.contacts.collectAsState()
+    val contacts by viewModel.processedContacts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    // Map of clean phone number -> Vula User ID
-    val phoneToVulaIdMap by viewModel.phoneToVulaIdMap.collectAsState()
+
+    if (showRadar) {
+        RadarScreen(onNavigateBack = { showRadar = false })
+        return
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Contacts") },
+                title = { Text("Contacts", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showRadar = true }) {
+                        Icon(Icons.Default.Search, contentDescription = "Radar")
                     }
                 }
             )
@@ -98,32 +111,129 @@ fun ContactsScreen(
                     modifier = Modifier.align(Alignment.Center),
                     style = MaterialTheme.typography.bodyLarge
                 )
-                else -> LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(contacts) { contact ->
-                        val cleanPhone = viewModel.cleanPhoneNumber(contact.phoneNumber)
-                        val vulaUserId = phoneToVulaIdMap[cleanPhone]
-                        val isOnVula = vulaUserId != null
-                        
-                        ContactItem(
-                            contact = contact,
-                            isOnVula = isOnVula,
-                            onClick = { if (vulaUserId != null) onContactClick(vulaUserId) },
-                            onInviteClick = {
-                                // Launch SMS with invite text
-                                val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                                    data = Uri.parse("smsto:${contact.phoneNumber}")
-                                    putExtra("sms_body",
-                                        "Hey ${contact.name}! I'm using Vula. Join me: https://vulaapp.com/download")
-                                }
-                                context.startActivity(smsIntent)
+                else -> {
+                    val onVula = contacts.filter { it.vulaUserId != null }
+                    val notOnVula = contacts.filter { it.vulaUserId == null }
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        item {
+                            RadarBanner(onClick = { showRadar = true })
+                        }
+
+                        if (onVula.isNotEmpty()) {
+                            stickyHeader {
+                                CategoryHeader("The Inner Circle")
                             }
-                        )
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    items(onVula.take(5)) { contact ->
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier.clickable { onContactClick(contact.vulaUserId!!, contact.richStatus, contact.name) }
+                                        ) {
+                                            DynamicContactRing(
+                                                name = contact.name,
+                                                isOnline = contact.isOnline,
+                                                hasUnseenStory = contact.lastStoryTimestamp > 0L,
+                                                size = 64.dp
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = contact.name.split(" ").firstOrNull() ?: contact.name,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            stickyHeader {
+                                CategoryHeader("On Vula")
+                            }
+                            items(onVula) { contact ->
+                                ContactItem(
+                                    contact = contact,
+                                    isOnVula = true,
+                                    onClick = { onContactClick(contact.vulaUserId!!, contact.richStatus, contact.name) },
+                                    onInviteClick = {}
+                                )
+                            }
+                        }
+
+                        if (notOnVula.isNotEmpty()) {
+                            stickyHeader {
+                                CategoryHeader("Invite to Vula")
+                            }
+                            items(notOnVula) { contact ->
+                                ContactItem(
+                                    contact = contact,
+                                    isOnVula = false,
+                                    onClick = { },
+                                    onInviteClick = {
+                                        // TODO: Replace with Firebase Dynamic Link
+                                        val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
+                                            data = Uri.parse("smsto:${contact.phoneNumber}")
+                                            putExtra("sms_body",
+                                                "Hey ${contact.name}! I'm using Vula. Join me: https://vulaapp.com/invite")
+                                        }
+                                        context.startActivity(smsIntent)
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CategoryHeader(title: String) {
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
+
+@Composable
+fun RadarBanner(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.Search, 
+                contentDescription = null, 
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text("Vula Radar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("Discover nearby users via Wi-Fi", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -136,60 +246,69 @@ fun ContactItem(
     onClick: () -> Unit,
     onInviteClick: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().then(
-            if (isOnVula) Modifier.clickable { onClick() } else Modifier
-        ),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = isOnVula) { onClick() }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        if (isOnVula) {
+            DynamicContactRing(
+                name = contact.name,
+                isOnline = contact.isOnline,
+                hasUnseenStory = contact.lastStoryTimestamp > 0L
+            )
+        } else {
             Surface(
-                modifier = Modifier.size(44.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-                color = if (isOnVula) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surfaceVariant
+                modifier = Modifier.size(56.dp),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Person,
-                    contentDescription = null,
-                    modifier = Modifier.padding(10.dp).fillMaxSize(),
-                    tint = if (isOnVula) MaterialTheme.colorScheme.onPrimaryContainer
-                           else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = contact.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = if (isOnVula) "On Vula ✓" else contact.phoneNumber,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (isOnVula) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            if (!isOnVula) {
-                Spacer(modifier = Modifier.width(8.dp))
-                OutlinedButton(
-                    onClick = onInviteClick,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Text("Invite", style = MaterialTheme.typography.labelMedium)
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = contact.name.firstOrNull()?.uppercase() ?: "?",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
+            }
+        }
+        
+        Spacer(modifier = Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = contact.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (isOnVula && contact.richStatus != null) {
+                Text(
+                    text = contact.richStatus,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else if (!isOnVula) {
+                Text(
+                    text = contact.phoneNumber,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (!isOnVula) {
+            Spacer(modifier = Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = onInviteClick,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+            ) {
+                Text("Invite", style = MaterialTheme.typography.labelMedium)
             }
         }
     }

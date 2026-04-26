@@ -67,10 +67,12 @@ class AuthRepositoryImpl @Inject constructor(
             val userId = authResult.user?.uid ?: throw Exception("Failed to create user")
 
             // Create User document
+            val hashedPhone = com.vula.app.core.util.HashUtils.sha256(phoneClean)
             val user = User(
                 id = userId,
                 username = lowercaseUsername,
                 phoneNumber = phoneClean,
+                phoneHash = hashedPhone,
                 displayName = username,
                 createdAt = System.currentTimeMillis()
             )

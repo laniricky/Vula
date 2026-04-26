@@ -7,9 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +30,8 @@ import kotlinx.coroutines.delay
 fun StoryViewerScreen(
     stories: List<Story>,
     initialIndex: Int = 0,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onReplyToStory: ((authorUserId: String, message: String) -> Unit)? = null
 ) {
     if (stories.isEmpty()) {
         onDismiss()
@@ -39,6 +41,7 @@ fun StoryViewerScreen(
     var currentIndex by remember { mutableStateOf(initialIndex) }
     var progress by remember { mutableStateOf(0f) }
     var isPaused by remember { mutableStateOf(false) }
+    var replyText by remember { mutableStateOf("") }
 
     val currentStory = stories.getOrNull(currentIndex)
 
@@ -78,40 +81,25 @@ fun StoryViewerScreen(
                     detectTapGestures(
                         onPress = {
                             isPaused = true
-                            try {
-                                awaitRelease()
-                            } finally {
-                                isPaused = false
-                            }
+                            try { awaitRelease() } finally { isPaused = false }
                         },
                         onTap = { offset ->
                             val width = size.width
                             if (offset.x < width / 3) {
-                                // Tap left (previous)
-                                if (currentIndex > 0) {
-                                    currentIndex--
-                                    progress = 0f
-                                }
+                                if (currentIndex > 0) { currentIndex--; progress = 0f }
                             } else {
-                                // Tap right (next)
-                                if (currentIndex < stories.lastIndex) {
-                                    currentIndex++
-                                    progress = 0f
-                                } else {
-                                    onDismiss()
-                                }
+                                if (currentIndex < stories.lastIndex) { currentIndex++; progress = 0f }
+                                else onDismiss()
                             }
                         }
                     )
                 }
                 .pointerInput(Unit) {
                     detectDragGestures(
-                        onDragEnd = { /* Optionally check drag distance to dismiss */ }
+                        onDragEnd = {}
                     ) { change, dragAmount ->
                         change.consume()
-                        if (dragAmount.y > 50) {
-                            onDismiss()
-                        }
+                        if (dragAmount.y > 50) onDismiss()
                     }
                 }
         ) {
@@ -130,6 +118,19 @@ fun StoryViewerScreen(
                     contentScale = ContentScale.Crop
                 )
             }
+
+            // Gradient overlay at bottom for readability
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp)
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                        )
+                    )
+            )
 
             // Overlay Top Bar
             Column(
@@ -150,9 +151,7 @@ fun StoryViewerScreen(
                         }
                         LinearProgressIndicator(
                             progress = { barProgress },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(2.dp),
+                            modifier = Modifier.weight(1f).height(2.dp),
                             color = Color.White,
                             trackColor = Color.White.copy(alpha = 0.3f),
                         )
@@ -162,9 +161,7 @@ fun StoryViewerScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // User Info
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     UserAvatar(
                         imageUrl = currentStory.authorProfileImageUrl,
                         username = currentStory.authorUsername,
@@ -185,6 +182,60 @@ fun StoryViewerScreen(
                     )
                 }
             }
+
+            // ── Story Reply Bar ──────────────────────────────────────────────
+            if (onReplyToStory != null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 24.dp)
+                        .imePadding(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = replyText,
+                        onValueChange = { replyText = it },
+                        placeholder = {
+                            Text(
+                                "Reply to ${currentStory.authorUsername}...",
+                                color = Color.White.copy(alpha = 0.6f)
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color.White.copy(alpha = 0.6f),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                            unfocusedContainerColor = Color.White.copy(alpha = 0.1f),
+                            focusedContainerColor = Color.White.copy(alpha = 0.15f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        ),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    FilledIconButton(
+                        onClick = {
+                            if (replyText.isNotBlank()) {
+                                onReplyToStory(currentStory.authorUserId, replyText.trim())
+                                replyText = ""
+                            }
+                        },
+                        enabled = replyText.isNotBlank(),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send reply",
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
         }
     }
 }
+

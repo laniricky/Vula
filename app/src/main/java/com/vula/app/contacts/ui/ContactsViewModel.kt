@@ -30,6 +30,26 @@ class ContactsViewModel @Inject constructor(
     // Map of clean phone number -> Vula User ID
     val phoneToVulaIdMap: StateFlow<Map<String, String>> = contactSyncManager.phoneToVulaIdMap
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+        
+    private val _syncedUsers = contactSyncManager.syncedUsers
+
+    val processedContacts: StateFlow<List<Contact>> = kotlinx.coroutines.flow.combine(
+        _contacts,
+        phoneToVulaIdMap,
+        _syncedUsers
+    ) { contactsList, phoneMap, userMap ->
+        contactsList.map { contact ->
+            val cleanPhone = cleanPhoneNumber(contact.phoneNumber)
+            val vulaId = phoneMap[cleanPhone]
+            val user = vulaId?.let { userMap[it] }
+            contact.copy(
+                vulaUserId = vulaId,
+                isOnline = user?.isOnline ?: false,
+                richStatus = user?.richStatus,
+                lastStoryTimestamp = user?.lastStoryTimestamp ?: 0L
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun cleanPhoneNumber(phone: String): String {
         return phone.replace(Regex("[^0-9+]"), "")

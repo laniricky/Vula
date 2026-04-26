@@ -31,6 +31,17 @@ class MainActivity : ComponentActivity() {
         // Read synchronously once — tiny DataStore read is safe on main before setContent
         val hasSeenOnboarding = runBlocking { preferencesDataStore.hasSeenOnboarding.first() }
 
+        // Handle Deep Link Invite
+        val data = intent?.data
+        if (data != null && data.scheme == "https" && data.host == "vulaapp.com" && data.path?.startsWith("/invite") == true) {
+            val inviterId = data.getQueryParameter("ref")
+            if (inviterId != null) {
+                // In a full implementation, we'd save this to DataStore and 
+                // auto-add the friend upon successful registration/login
+                android.util.Log.d("VulaDeepLink", "Invited by user ID: $inviterId")
+            }
+        }
+
         setContent {
             VulaTheme {
                 Surface(

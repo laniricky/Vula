@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Allow cleartext traffic to local Firebase emulator in debug builds -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">10.100.4.198</domain>
-    </domain-config>
+    <!--
+        Debug-only NSC: permits cleartext HTTP to the Firebase Local Emulator Suite.
+        This file lives in src/debug and is ONLY included in debug builds.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>
