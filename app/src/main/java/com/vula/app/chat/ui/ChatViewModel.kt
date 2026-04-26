@@ -17,16 +17,24 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.google.firebase.firestore.FirebaseFirestore
+import com.vula.app.core.util.Constants
+import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
-    private val auth: FirebaseAuth
+    private val auth: FirebaseAuth,
+    private val firestore: FirebaseFirestore
 ) : ViewModel() {
 
     private val _roomsState = MutableStateFlow<List<ChatRoom>>(emptyList())
     val roomsState: StateFlow<List<ChatRoom>> = _roomsState.asStateFlow()
+    
+    // Map of roomId -> Other User's Name
+    private val _roomNames = MutableStateFlow<Map<String, String>>(emptyMap())
+    val roomNames: StateFlow<Map<String, String>> = _roomNames.asStateFlow()
 
     private val _messagesState = MutableStateFlow<List<Message>>(emptyList())
     val messagesState: StateFlow<List<Message>> = _messagesState.asStateFlow()
@@ -58,7 +66,35 @@ class ChatViewModel @Inject constructor(
         viewModelScope.launch {
             chatRepository.getChatRooms().collect { rooms ->
                 _roomsState.value = rooms
+                resolveRoomNames(rooms)
             }
+        }
+    }
+    
+    private suspend fun resolveRoomNames(rooms: List<ChatRoom>) {
+        val uid = currentUserId ?: return
+        val currentNames = _roomNames.value.toMutableMap()
+        var changed = false
+        
+        for (room in rooms) {
+            if (room.type == "direct") {
+                val otherId = room.participants.firstOrNull { it != uid }
+                if (otherId != null && !currentNames.containsKey(room.id)) {
+                    try {
+                        val doc = firestore.collection(Constants.USERS_COLLECTION).document(otherId).get().await()
+                        val username = doc.getString("username")
+                        if (username != null) {
+                            currentNames[room.id] = username
+                            changed = true
+                        }
+                    } catch (e: Exception) {
+                        // ignore error, keep defaulting to "Chat"
+                    }
+                }
+            }
+        }
+        if (changed) {
+            _roomNames.value = currentNames
         }
     }
 

@@ -36,6 +36,7 @@ fun ChatListScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     val rooms by viewModel.roomsState.collectAsState()
+    val roomNames by viewModel.roomNames.collectAsState()
     val requests by viewModel.incomingRequests.collectAsState()
     val currentUserId = viewModel.currentUserId
 
@@ -132,6 +133,7 @@ fun ChatListScreen(
                         items(rooms, key = { it.id }) { room ->
                             ChatRoomItem(
                                 room = room,
+                                resolvedName = roomNames[room.id],
                                 currentUserId = currentUserId,
                                 hasUnread = currentUserId != null && room.unreadFor.contains(currentUserId),
                                 onClick = { onChatClick(room.id) }
@@ -149,12 +151,13 @@ fun ChatListScreen(
 @Composable
 fun ChatRoomItem(
     room: ChatRoom,
+    resolvedName: String?,
     currentUserId: String?,
     hasUnread: Boolean,
     onClick: () -> Unit
 ) {
     val otherUserId = room.participants.firstOrNull { it != currentUserId } ?: "Unknown"
-    val roomName = room.name ?: "Chat"
+    val roomName = resolvedName ?: room.name ?: "Chat"
     val time = if (room.lastMessageAt > 0) TimeAgo.format(room.lastMessageAt) else ""
 
     Row(

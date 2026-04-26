@@ -49,9 +49,12 @@ fun ConversationScreen(
 ) {
     val messages by viewModel.messagesState.collectAsState()
     val currentRoom by viewModel.currentRoom.collectAsState()
+    val roomNames by viewModel.roomNames.collectAsState()
     val currentUserId = viewModel.currentUserId
     var textInput by remember { mutableStateOf("") }
     var activeReplyContext by remember { mutableStateOf(replyContext) }
+
+    val resolvedContactName = contactName ?: roomNames[chatRoomId] ?: currentRoom?.name ?: "Chat"
 
     val listState = rememberLazyListState()
 
@@ -77,7 +80,7 @@ fun ConversationScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         // Hero Avatar — shared element key matches ContactsScreen
-                        val avatarInitial = contactName?.firstOrNull()?.uppercase() ?: "?"
+                        val avatarInitial = resolvedContactName.firstOrNull()?.uppercase() ?: "?"
                         val avatarModifier = if (sharedTransitionScope != null && animatedVisibilityScope != null) {
                             with(sharedTransitionScope) {
                                 Modifier.sharedElement(
@@ -104,7 +107,7 @@ fun ConversationScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = contactName ?: "Chat",
+                                text = resolvedContactName,
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                             )
                         }
