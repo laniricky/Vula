@@ -135,6 +135,49 @@ class PostRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun reactToPost(postId: String, userId: String, emoji: String): Result<Unit> {
+        return try {
+            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
+            // Read the user's previous reaction so we can manage likesCount properly
+            val snapshot = postRef.get().await()
+            @Suppress("UNCHECKED_CAST")
+            val reactions = snapshot.get("reactions") as? Map<String, String> ?: emptyMap()
+            val hadNoReaction = !reactions.containsKey(userId)
+
+            firestore.runBatch { batch ->
+                // Write the emoji into reactions.<userId>
+                batch.update(postRef, "reactions.$userId", emoji)
+                // Also keep likedBy / likesCount in sync for backward compat
+                if (hadNoReaction) {
+                    batch.update(postRef, "likesCount",
+                        com.google.firebase.firestore.FieldValue.increment(1))
+                    batch.update(postRef, "likedBy",
+                        com.google.firebase.firestore.FieldValue.arrayUnion(userId))
+                }
+            }.await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun removeReaction(postId: String, userId: String): Result<Unit> {
+        return try {
+            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
+            firestore.runBatch { batch ->
+                batch.update(postRef, "reactions.$userId",
+                    com.google.firebase.firestore.FieldValue.delete())
+                batch.update(postRef, "likesCount",
+                    com.google.firebase.firestore.FieldValue.increment(-1))
+                batch.update(postRef, "likedBy",
+                    com.google.firebase.firestore.FieldValue.arrayRemove(userId))
+            }.await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     override suspend fun addComment(postId: String, text: String): Result<Unit> {
         return try {
             val currentUser = auth.currentUser ?: throw Exception("Not authenticated")

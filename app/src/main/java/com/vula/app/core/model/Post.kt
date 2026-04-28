@@ -13,6 +13,8 @@ data class Post(
     val createdAt: Long = 0L,
     // Stored as an array in Firestore; used for client-side like state
     val likedBy: List<String> = emptyList(),
+    // Map of userId → emoji string (e.g. "🔥"). Stored as a Firestore map.
+    val reactions: Map<String, String> = emptyMap(),
     // Inline comment preview
     val topComment: CommentPreview? = null
 )

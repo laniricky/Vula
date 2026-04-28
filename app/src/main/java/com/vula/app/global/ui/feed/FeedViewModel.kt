@@ -54,13 +54,26 @@ class FeedViewModel @Inject constructor(
 
     fun likePost(postId: String, currentUserId: String) {
         viewModelScope.launch {
-            postRepository.likePost(postId, currentUserId)
+            // Double-tap routes through the emoji reaction system with ❤️
+            postRepository.reactToPost(postId, currentUserId, "❤️")
         }
     }
 
     fun unlikePost(postId: String, currentUserId: String) {
         viewModelScope.launch {
-            postRepository.unlikePost(postId, currentUserId)
+            postRepository.removeReaction(postId, currentUserId)
+        }
+    }
+
+    fun reactToPost(postId: String, currentUserId: String, emoji: String) {
+        viewModelScope.launch {
+            postRepository.reactToPost(postId, currentUserId, emoji)
+        }
+    }
+
+    fun removeReaction(postId: String, currentUserId: String) {
+        viewModelScope.launch {
+            postRepository.removeReaction(postId, currentUserId)
         }
     }
 }

@@ -17,6 +17,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import com.vula.app.core.model.Post
 import com.vula.app.core.ui.components.FullScreenLoading
 import com.vula.app.core.ui.components.SkeletonPostCard
 import com.vula.app.core.ui.components.StoryCard
@@ -31,6 +32,7 @@ fun FeedScreen(
     onNavigateToSearch: () -> Unit = {},
     onNavigateToStory: (Int) -> Unit = {},
     onNavigateToCreateStory: () -> Unit = {},
+    onDmReplyToPost: (Post) -> Unit = {},
     onMenuClick: (() -> Unit)? = null,
     viewModel: FeedViewModel = hiltViewModel()
 ) {
@@ -111,7 +113,10 @@ fun FeedScreen(
                             contactName = contactName,
                             onLikeClick    = { viewModel.likePost(it, currentUserId) },
                             onUnlikeClick  = { viewModel.unlikePost(it, currentUserId) },
+                            onReactToPost  = { postId, emoji -> viewModel.reactToPost(postId, currentUserId, emoji) },
+                            onRemoveReaction = { postId -> viewModel.removeReaction(postId, currentUserId) },
                             onCommentClick = { onNavigateToComments(it) },
+                            onDmReplyToPost = { onDmReplyToPost(it) },
                             onUserClick    = { onNavigateToProfile(it) }
                         )
                     }
@@ -129,3 +134,4 @@ fun FeedScreen(
         }
     }
 }
+

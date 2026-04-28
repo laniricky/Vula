@@ -314,6 +314,19 @@ fun VulaNavGraph(
                     onNavigateToCreateStory = {
                         navController.navigate(Screen.CreateStory.route)
                     },
+                    onDmReplyToPost = { post ->
+                        // Open a DM with the post author, pre-filling caption as reply context
+                        chatViewModel.createDirectChat(post.authorId) { roomId ->
+                            if (roomId != null) {
+                                navController.navigate(
+                                    Screen.Conversation.createRoute(
+                                        roomId       = roomId,
+                                        replyContext = post.caption.ifBlank { "📸 Post" }
+                                    )
+                                )
+                            }
+                        }
+                    },
                     onMenuClick          = openDrawer
                 )
             }
@@ -332,6 +345,7 @@ fun VulaNavGraph(
             StoryViewerScreen(
                 stories = stories,
                 initialIndex = index,
+                currentUserId = currentUserId ?: "",
                 onDismiss = { navController.popBackStack() },
                 onReplyToStory = { authorUserId, message ->
                     // Create or find DM room, send the message, navigate

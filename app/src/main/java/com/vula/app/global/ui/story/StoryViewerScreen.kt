@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,12 +25,15 @@ import com.vula.app.global.ui.components.VideoPlayer
 import com.vula.app.core.model.Story
 import com.vula.app.core.ui.components.UserAvatar
 import com.vula.app.core.util.TimeAgo
+import com.vula.app.global.ui.components.VoiceNoteReaction
 import kotlinx.coroutines.delay
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StoryViewerScreen(
     stories: List<Story>,
     initialIndex: Int = 0,
+    currentUserId: String = "",
     onDismiss: () -> Unit,
     onReplyToStory: ((authorUserId: String, message: String) -> Unit)? = null
 ) {
@@ -42,26 +46,32 @@ fun StoryViewerScreen(
     var progress by remember { mutableStateOf(0f) }
     var isPaused by remember { mutableStateOf(false) }
     var replyText by remember { mutableStateOf("") }
+    var showVoiceSheet by remember { mutableStateOf(false) }
 
     val currentStory = stories.getOrNull(currentIndex)
 
-    // Auto-advance logic (5 seconds per story)
-    LaunchedEffect(currentIndex, isPaused) {
+    // Pause story when voice sheet is open
+    val effectivelyPaused = isPaused || showVoiceSheet
+
+    // Auto-advance logic (5 seconds per story) — respects voice sheet
+    LaunchedEffect(currentIndex, effectivelyPaused) {
         progress = 0f
-        if (!isPaused) {
+        if (!effectivelyPaused) {
             val duration = 5000L
             val step = 50L
             val increment = step.toFloat() / duration.toFloat()
 
-            while (progress < 1f) {
+            while (progress < 1f && !effectivelyPaused) {
                 delay(step)
                 progress += increment
             }
 
-            if (currentIndex < stories.lastIndex) {
-                currentIndex++
-            } else {
-                onDismiss()
+            if (!effectivelyPaused) {
+                if (currentIndex < stories.lastIndex) {
+                    currentIndex++
+                } else {
+                    onDismiss()
+                }
             }
         }
     }
@@ -81,7 +91,7 @@ fun StoryViewerScreen(
                     detectTapGestures(
                         onPress = {
                             isPaused = true
-                            try { awaitRelease() } finally { isPaused = false }
+                            try { awaitRelease() } finally { if (!showVoiceSheet) isPaused = false }
                         },
                         onTap = { offset ->
                             val width = size.width
@@ -193,6 +203,20 @@ fun StoryViewerScreen(
                         .imePadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // 🎤 Voice note button
+                    FilledIconButton(
+                        onClick = { showVoiceSheet = true },
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.2f)
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Mic,
+                            contentDescription = "Send voice note",
+                            tint = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
                     OutlinedTextField(
                         value = replyText,
                         onValueChange = { replyText = it },
@@ -235,6 +259,23 @@ fun StoryViewerScreen(
                     }
                 }
             }
+        }
+    }
+
+    // ── Voice Note Bottom Sheet ───────────────────────────────────────────────
+    if (showVoiceSheet && currentStory != null) {
+        ModalBottomSheet(
+            onDismissRequest = { showVoiceSheet = false }
+        ) {
+            VoiceNoteReaction(
+                storyId = currentStory.id,
+                currentUserId = currentUserId,
+                onSendVoiceNote = { url ->
+                    onReplyToStory?.invoke(currentStory.authorUserId, url)
+                    showVoiceSheet = false
+                },
+                onDismiss = { showVoiceSheet = false }
+            )
         }
     }
 }
