@@ -178,13 +178,16 @@ fun ContactsScreen(
                                     isOnVula = false,
                                     onClick = { },
                                     onInviteClick = {
-                                        // TODO: Replace with Firebase Dynamic Link
-                                        val smsIntent = Intent(Intent.ACTION_SENDTO).apply {
-                                            data = Uri.parse("smsto:${contact.phoneNumber}")
-                                            putExtra("sms_body",
-                                                "Hey ${contact.name}! I'm using Vula. Join me: https://vulaapp.com/invite")
+                                        val sendIntent = Intent().apply {
+                                            action = Intent.ACTION_SEND
+                                            putExtra(
+                                                Intent.EXTRA_TEXT,
+                                                "Hey ${contact.name}! I'm using Vula. Join me: https://vulaapp.com/invite"
+                                            )
+                                            type = "text/plain"
                                         }
-                                        context.startActivity(smsIntent)
+                                        val shareIntent = Intent.createChooser(sendIntent, "Invite ${contact.name} via...")
+                                        context.startActivity(shareIntent)
                                     }
                                 )
                             }

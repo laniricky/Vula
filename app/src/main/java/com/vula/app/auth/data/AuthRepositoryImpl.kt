@@ -1,134 +1,73 @@
 package com.vula.app.auth.data
 
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.messaging.FirebaseMessaging
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.vula.app.core.model.User
-import com.vula.app.core.util.Constants
-import kotlinx.coroutines.channels.awaitClose
+import com.vula.app.core.network.RequestCodeBody
+import com.vula.app.core.network.VerifyCodeBody
+import com.vula.app.core.network.VulaApiService
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 class AuthRepositoryImpl @Inject constructor(
-    private val auth: FirebaseAuth,
-    private val firestore: FirebaseFirestore
+    private val apiService: VulaApiService,
+    private val dataStore: DataStore<Preferences>
 ) : AuthRepository {
 
-    override val isUserLoggedIn: Boolean
-        get() = auth.currentUser != null
+    companion object {
+        private val TOKEN_KEY = stringPreferencesKey("jwt_token")
+    }
 
-    override val currentUser: Flow<User?> = callbackFlow {
-        val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
-            val firebaseUser = firebaseAuth.currentUser
-            if (firebaseUser == null) {
-                trySend(null)
+    override val isUserLoggedIn: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[TOKEN_KEY] != null
+    }
+
+    override val currentUser: Flow<User?> = dataStore.data.map { preferences ->
+        // TODO: In Phase 4, we'll fetch the full User object from Postgres /api/users/me
+        val token = preferences[TOKEN_KEY]
+        if (token != null) {
+            User(id = "temp", username = "user", phoneNumber = "", phoneHash = "", displayName = "", createdAt = 0L)
+        } else {
+            null
+        }
+    }
+
+    override suspend fun requestCode(phoneNumber: String): Result<Unit> {
+        return try {
+            val response = apiService.requestCode(RequestCodeBody(phone = phoneNumber))
+            if (response.isSuccessful) {
+                Result.success(Unit)
             } else {
-                firestore.collection(Constants.USERS_COLLECTION)
-                    .document(firebaseUser.uid)
-                    .get()
-                    .addOnSuccessListener { snapshot ->
-                        val user = snapshot.toObject(User::class.java)
-                        trySend(user)
-                    }
-                    .addOnFailureListener {
-                        trySend(null)
-                    }
+                Result.failure(Exception("Failed to request code"))
             }
-        }
-        auth.addAuthStateListener(listener)
-        awaitClose { auth.removeAuthStateListener(listener) }
-    }
-
-    override suspend fun register(phoneNumber: String, username: String, password: String): Result<Unit> {
-        return try {
-            val lowercaseUsername = username.lowercase()
-            val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
-            
-            // Check if username exists
-            val usernameDoc = try {
-                firestore.collection(Constants.USERNAMES_COLLECTION)
-                    .document(lowercaseUsername)
-                    .get(com.google.firebase.firestore.Source.SERVER)
-                    .await()
-            } catch (e: Exception) {
-                android.util.Log.e("VulaAuth", "Firestore error checking username", e)
-                return Result.failure(Exception("Network error or DB not initialized: ${e.message}"))
-            }
-                
-            if (usernameDoc.exists()) {
-                return Result.failure(Exception("Username already taken"))
-            }
-
-            // Create Firebase Auth user using phone number as email prefix
-            val email = "$phoneClean@vula.local"
-            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val userId = authResult.user?.uid ?: throw Exception("Failed to create user")
-
-            // Create User document
-            val hashedPhone = com.vula.app.core.util.HashUtils.sha256(phoneClean)
-            val user = User(
-                id = userId,
-                username = lowercaseUsername,
-                phoneNumber = phoneClean,
-                phoneHash = hashedPhone,
-                displayName = username,
-                createdAt = System.currentTimeMillis()
-            )
-
-            firestore.runBatch { batch ->
-                val userRef = firestore.collection(Constants.USERS_COLLECTION).document(userId)
-                val usernameRef = firestore.collection(Constants.USERNAMES_COLLECTION).document(lowercaseUsername)
-                
-                batch.set(userRef, user)
-                batch.set(usernameRef, mapOf("userId" to userId))
-            }.await()
-
-            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override suspend fun login(phoneNumber: String, password: String): Result<Unit> {
+    override suspend fun verifyCode(phoneNumber: String, code: String): Result<Unit> {
         return try {
-            val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
-            val email = "$phoneClean@vula.local"
-            val authResult = auth.signInWithEmailAndPassword(email, password).await()
-            
-            // Save FCM token
-            val userId = authResult.user?.uid
-            if (userId != null) {
-                try {
-                    val token = FirebaseMessaging.getInstance().token.await()
-                    firestore.collection(Constants.USERS_COLLECTION)
-                        .document(userId)
-                        .update("fcmToken", token)
-                        .await()
-                } catch (e: Exception) {
-                    android.util.Log.e("VulaAuth", "Failed to save FCM token", e)
+            val response = apiService.verifyCode(VerifyCodeBody(phone = phoneNumber, code = code))
+            if (response.isSuccessful && response.body() != null) {
+                val token = response.body()!!.token
+                dataStore.edit { preferences ->
+                    preferences[TOKEN_KEY] = token
                 }
+                Result.success(Unit)
+            } else {
+                Result.failure(Exception("Invalid code"))
             }
-            
-            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override suspend fun resetPassword(phoneNumber: String): Result<Unit> {
-        return try {
-            val phoneClean = phoneNumber.trim().replace("\\s+".toRegex(), "")
-            val email = "$phoneClean@vula.local"
-            auth.sendPasswordResetEmail(email).await()
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(Exception("Could not send reset link. Check your phone number and try again."))
+    override suspend fun logout() {
+        dataStore.edit { preferences ->
+            preferences.remove(TOKEN_KEY)
         }
-    }
-
-    override fun logout() {
-        auth.signOut()
     }
 }

@@ -53,6 +53,7 @@ import com.vula.app.global.ui.story.StoryViewerScreen
 import com.vula.app.local.ui.LocalModeScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 // ─── Route Definitions ────────────────────────────────────────────────────────
 
@@ -109,9 +110,12 @@ fun VulaApp(
     val currentRoute       = navBackStackEntry?.destination?.route
     val currentUser        by authViewModel.currentUser.collectAsState(initial = null)
     val unreadCount        by chatViewModel.unreadCount.collectAsState()
+    // Collect login state from DataStore-backed Flow
+    val isLoggedIn         by authViewModel.isUserLoggedIn.collectAsState(initial = false)
 
     val startDest = remember {
-        if (authViewModel.isUserLoggedIn) Screen.Feed.route else Screen.Login.route
+        val loggedIn = runBlocking { authViewModel.isUserLoggedIn.first() }
+        if (loggedIn) Screen.Feed.route else Screen.Login.route
     }
 
     LaunchedEffect(currentUser) {

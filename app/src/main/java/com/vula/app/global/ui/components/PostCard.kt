@@ -11,7 +11,9 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -46,6 +48,7 @@ import kotlinx.coroutines.delay
 // The 5 canonical reaction emojis
 val REACTION_EMOJIS = listOf("❤️", "😂", "😮", "😢", "🔥")
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PostCard(
     post: Post,
@@ -191,24 +194,25 @@ fun PostCard(
                         label = "like_scale"
                     )
                     Box {
-                        IconButton(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                if (currentUserEmoji != null) {
-                                    onRemoveReaction(post.id)
-                                } else {
-                                    onReactToPost(post.id, "❤️")
-                                }
-                            },
+                        Box(
                             modifier = Modifier
-                                .pointerInput(Unit) {
-                                    detectTapGestures(
-                                        onLongPress = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            showEmojiPicker = true
+                                .minimumInteractiveComponentSize()
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .combinedClickable(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (currentUserEmoji != null) {
+                                            onRemoveReaction(post.id)
+                                        } else {
+                                            onReactToPost(post.id, "❤️")
                                         }
-                                    )
-                                }
+                                    },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        showEmojiPicker = true
+                                    }
+                                ),
+                            contentAlignment = Alignment.Center
                         ) {
                             if (currentUserEmoji != null) {
                                 Text(
