@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -108,6 +111,50 @@ func main() {
 
 	// --- AUTHENTICATION ---
 	auth := app.Group("/api/auth")
+
+	sendTwilioSMS := func(to, code string) {
+		accountSid := os.Getenv("TWILIO_ACCOUNT_SID")
+		authToken := os.Getenv("TWILIO_AUTH_TOKEN")
+		fromPhone := os.Getenv("TWILIO_PHONE_NUMBER")
+
+		// Fallback if not configured properly
+		if accountSid == "" || authToken == "" || fromPhone == "" {
+			log.Printf("====> SMS: Your Vula code is %s <====", code)
+			log.Printf("Twilio not configured, skipping actual SMS.")
+			return
+		}
+
+		urlStr := fmt.Sprintf("https://api.twilio.com/2010-04-01/Accounts/%s/Messages.json", accountSid)
+		
+		msgData := url.Values{}
+		msgData.Set("To", to)
+		msgData.Set("From", fromPhone)
+		msgData.Set("Body", fmt.Sprintf("Your Vula code is %s", code))
+		
+		req, err := http.NewRequest("POST", urlStr, strings.NewReader(msgData.Encode()))
+		if err != nil {
+			log.Printf("Error creating Twilio request: %v", err)
+			return
+		}
+		
+		req.SetBasicAuth(accountSid, authToken)
+		req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+		
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Failed to send SMS to %s via Twilio: %v", to, err)
+			return
+		}
+		defer resp.Body.Close()
+		
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			log.Printf("Twilio SMS successfully sent to %s", to)
+		} else {
+			log.Printf("Twilio error sending SMS: Status Code %d", resp.StatusCode)
+		}
+	}
+
 	auth.Post("/request-code", func(c *fiber.Ctx) error {
 		type Request struct {
 			Phone string `json:"phone"`
@@ -124,8 +171,10 @@ func main() {
 			rdb.Set(ctx, "otp:"+req.Phone, code, 5*time.Minute)
 		}
 
-		log.Printf("====> SMS: Your Vula code is %s <====", code)
-		return c.JSON(fiber.Map{"message": "Code sent successfully"})
+		// Execute SMS sending in background
+		go sendTwilioSMS(req.Phone, code)
+		
+		return c.JSON(fiber.Map{"message": "Code processing"})
 	})
 
 	auth.Post("/verify-code", func(c *fiber.Ctx) error {
