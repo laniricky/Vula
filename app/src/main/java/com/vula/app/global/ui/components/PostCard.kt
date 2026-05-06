@@ -1,6 +1,5 @@
 package com.vula.app.global.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -16,12 +15,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,7 +77,6 @@ fun PostCard(
         }
     }
 
-    // Dismiss picker on outside interaction (auto-hide after 3s)
     LaunchedEffect(showEmojiPicker) {
         if (showEmojiPicker) {
             delay(3000)
@@ -84,7 +84,6 @@ fun PostCard(
         }
     }
 
-    // Compute reaction summary: emoji → count
     val reactionSummary = remember(post.reactions) {
         post.reactions.values
             .groupingBy { it }
@@ -94,296 +93,280 @@ fun PostCard(
             .take(3)
     }
 
-    Card(
+    // Approximate views: likes × 2 + comments × 5 as a display heuristic
+    val displayViews = post.likesCount * 2 + post.commentsCount * 5
+
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .semantics(mergeDescendants = true) {},
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            .padding(horizontal = 0.dp, vertical = 0.dp)
+            .semantics(mergeDescendants = true) {}
     ) {
-        Column {
-            // ── Header ──────────────────────────────────────────────────────
-            Row(
+        // ── Header ────────────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onUserClick(post.authorId) }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            UserAvatar(
+                imageUrl = post.authorProfileImageUrl,
+                username = contactName ?: post.authorUsername,
+                size = 38.dp,
+                modifier = Modifier.clearAndSetSemantics {}
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = contactName ?: post.authorUsername,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = TimeAgo.format(post.createdAt),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+            IconButton(
+                onClick = {},
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreHoriz,
+                    contentDescription = "More options",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                )
+            }
+        }
+
+        // ── Post Image (landscape 4:3) ─────────────────────────────────────────
+        if (post.imageUrl != null) {
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onUserClick(post.authorId) }
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                UserAvatar(
-                    imageUrl = post.authorProfileImageUrl,
-                    username = contactName ?: post.authorUsername,
-                    size = 40.dp,
-                    modifier = Modifier.clearAndSetSemantics {}
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = contactName ?: post.authorUsername,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = TimeAgo.format(post.createdAt),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // ── Post image with double-tap like ─────────────────────────────
-            if (post.imageUrl != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onDoubleTap = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (currentUserEmoji == null) {
-                                        onReactToPost(post.id, "❤️")
-                                    }
-                                    showHeartOverlay = true
+                    .padding(horizontal = 16.dp)
+                    .aspectRatio(4f / 3f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (currentUserEmoji == null) {
+                                    onReactToPost(post.id, "❤️")
                                 }
-                            )
-                        },
-                    contentAlignment = Alignment.Center
+                                showHeartOverlay = true
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                if (post.mediaType == "video") {
+                    VideoPlayer(
+                        videoUrl = post.imageUrl,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    AsyncImage(
+                        model = post.imageUrl,
+                        contentDescription = "Post image",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                // Double-tap heart overlay
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showHeartOverlay,
+                    enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
+                    exit = scaleOut() + fadeOut()
                 ) {
-                    if (post.mediaType == "video") {
-                        VideoPlayer(
-                            videoUrl = post.imageUrl,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        AsyncImage(
-                            model = post.imageUrl,
-                            contentDescription = "Post image",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    }
-                    // Animated heart overlay on double-tap
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showHeartOverlay,
-                        enter = scaleIn(spring(dampingRatio = Spring.DampingRatioMediumBouncy)) + fadeIn(),
-                        exit = scaleOut() + fadeOut()
-                    ) {
-                        Text("❤️", fontSize = 88.sp)
-                    }
+                    Text("❤️", fontSize = 88.sp)
                 }
             }
+        }
 
-            // ── Action row ──────────────────────────────────────────────────
-            Box(modifier = Modifier.fillMaxWidth()) {
+        // ── Action Row ─────────────────────────────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .clearAndSetSemantics {},
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Like / Emoji button with long-press picker
+            val likeScale by animateFloatAsState(
+                targetValue = if (currentUserEmoji != null || isLiked) 1.2f else 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                label = "like_scale"
+            )
+            Box {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp, vertical = 4.dp)
-                        .clearAndSetSemantics {},
+                        .clip(RoundedCornerShape(20.dp))
+                        .combinedClickable(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                if (currentUserEmoji != null) {
+                                    onRemoveReaction(post.id)
+                                } else {
+                                    onReactToPost(post.id, "❤️")
+                                }
+                            },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showEmojiPicker = true
+                            }
+                        )
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // ── Reaction / Like button with long-press picker ────────
-                    val likeScale by animateFloatAsState(
-                        targetValue = if (currentUserEmoji != null || isLiked) 1.2f else 1f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-                        label = "like_scale"
-                    )
-                    Box {
-                        Box(
+                    if (currentUserEmoji != null) {
+                        Text(
+                            text = currentUserEmoji,
+                            fontSize = 20.sp,
+                            modifier = Modifier.graphicsLayer { scaleX = likeScale; scaleY = likeScale }
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isLiked) "Unlike" else "Like",
+                            tint = if (isLiked) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
                             modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .clip(androidx.compose.foundation.shape.CircleShape)
-                                .combinedClickable(
-                                    onClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        if (currentUserEmoji != null) {
-                                            onRemoveReaction(post.id)
-                                        } else {
-                                            onReactToPost(post.id, "❤️")
-                                        }
-                                    },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        showEmojiPicker = true
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (currentUserEmoji != null) {
-                                Text(
-                                    text = currentUserEmoji,
-                                    fontSize = 22.sp,
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = likeScale; scaleY = likeScale
-                                    }
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = if (isLiked) "Unlike" else "Like",
-                                    tint = if (isLiked) Color(0xFFE91E63) else MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.graphicsLayer {
-                                        scaleX = likeScale; scaleY = likeScale
-                                    }
-                                )
-                            }
-                        }
+                                .size(22.dp)
+                                .graphicsLayer { scaleX = likeScale; scaleY = likeScale }
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "${post.likesCount}",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                    )
+                }
 
-                        // ── Emoji picker popup ───────────────────────────────
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = showEmojiPicker,
-                            enter = slideInVertically { it } + fadeIn(),
-                            exit = slideOutVertically { it } + fadeOut(),
-                            modifier = Modifier.align(Alignment.BottomStart)
+                // Emoji picker popup
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showEmojiPicker,
+                    enter = slideInVertically { it } + fadeIn(),
+                    exit = slideOutVertically { it } + fadeOut(),
+                    modifier = Modifier.align(Alignment.BottomStart)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(32.dp),
+                        shadowElevation = 8.dp,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.offset(y = (-56).dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(32.dp),
-                                shadowElevation = 8.dp,
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.offset(y = (-56).dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    REACTION_EMOJIS.forEach { emoji ->
-                                        val isSelected = currentUserEmoji == emoji
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(50))
-                                                .background(
-                                                    if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                                    else Color.Transparent
-                                                )
-                                                .clickable {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                    showEmojiPicker = false
-                                                    if (isSelected) onRemoveReaction(post.id)
-                                                    else onReactToPost(post.id, emoji)
-                                                }
-                                                .padding(8.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(emoji, fontSize = 26.sp)
+                            REACTION_EMOJIS.forEach { emoji ->
+                                val isSelected = currentUserEmoji == emoji
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                            else Color.Transparent
+                                        )
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            showEmojiPicker = false
+                                            if (isSelected) onRemoveReaction(post.id)
+                                            else onReactToPost(post.id, emoji)
                                         }
-                                    }
+                                        .padding(8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(emoji, fontSize = 26.sp)
                                 }
                             }
                         }
                     }
-
-                    // ── Comment button ───────────────────────────────────────
-                    IconButton(onClick = { onCommentClick(post.id) }) {
-                        Icon(
-                            imageVector = Icons.Default.ChatBubbleOutline,
-                            contentDescription = "Comment",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // ── DM Reply button ──────────────────────────────────────
-                    IconButton(
-                        onClick = { onDmReplyToPost(post) },
-                        modifier = Modifier.semantics {
-                            contentDescription = "Send post to ${contactName ?: post.authorUsername} via DM"
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Send,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
                 }
             }
 
-            // ── Reaction summary row ─────────────────────────────────────────
-            if (reactionSummary.isNotEmpty()) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    reactionSummary.forEach { (emoji, count) ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(emoji, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "$count",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
+            Spacer(modifier = Modifier.width(4.dp))
 
-            // ── Like count (legacy fallback) ────────────────────────────────
-            if (reactionSummary.isEmpty() && post.likesCount > 0) {
+            // Comment button + count
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable { onCommentClick(post.id) }
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ChatBubbleOutline,
+                    contentDescription = "Comments",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "${post.likesCount} ${if (post.likesCount == 1) "like" else "likes"}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    text = "${post.commentsCount}",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                 )
             }
 
-            // ── Caption ─────────────────────────────────────────────────────
-            if (post.caption.isNotEmpty()) {
-                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    Text(
-                        text = contactName ?: post.authorUsername,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = post.caption, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
+            Spacer(modifier = Modifier.weight(1f))
 
-            // ── Inline Comment Preview ──────────────────────────────────────
-            post.topComment?.let { comment ->
-                Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) {
-                    Text(
-                        text = comment.username,
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = comment.text, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-
-            // ── Comments link ────────────────────────────────────────────────
-            if (post.commentsCount > 0) {
-                Text(
-                    text = "View all ${post.commentsCount} comments",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                    modifier = Modifier
-                        .clickable { onCommentClick(post.id) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+            // Views count (right-aligned)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(end = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Visibility,
+                    contentDescription = "Views",
+                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    modifier = Modifier.size(18.dp)
                 )
-            } else {
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = "Add a comment…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                    modifier = Modifier
-                        .clickable { onCommentClick(post.id) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                    text = "$displayViews",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                 )
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
         }
+
+        // ── Caption ──────────────────────────────────────────────────────────
+        if (post.caption.isNotEmpty()) {
+            Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)) {
+                Text(
+                    text = contactName ?: post.authorUsername,
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = post.caption, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+        // ── Comments link ────────────────────────────────────────────────────
+        if (post.commentsCount > 0) {
+            Text(
+                text = "View all ${post.commentsCount} comments",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                modifier = Modifier
+                    .clickable { onCommentClick(post.id) }
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        HorizontalDivider(
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+            thickness = 0.5.dp
+        )
     }
 }

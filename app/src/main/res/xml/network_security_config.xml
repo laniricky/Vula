@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Production: cleartext blocked, only HTTPS allowed -->
-    <base-config cleartextTrafficPermitted="false">
+    <!-- Development: cleartext allowed for local network testing -->
+    <base-config cleartextTrafficPermitted="true">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

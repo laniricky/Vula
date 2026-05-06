@@ -17,9 +17,26 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    // IMPORTANT: For Android emulator to access localhost, use 10.0.2.2.
-    // For physical device testing over Wi-Fi, change this to your PC's IP address (e.g. 192.168.1.10)
-    private const val BASE_URL = "http://192.168.137.1:8081"
+    private fun getBaseUrl(): String {
+        if (android.os.Build.MODEL.contains("Subsystem for Android")) {
+            return "http://192.168.137.1:8081"
+        }
+
+        val isEmulator = android.os.Build.FINGERPRINT.contains("generic") ||
+                android.os.Build.FINGERPRINT.startsWith("unknown") ||
+                android.os.Build.MODEL.contains("google_sdk") ||
+                android.os.Build.MODEL.contains("Emulator") ||
+                android.os.Build.MODEL.contains("Android SDK built for x86") ||
+                android.os.Build.MANUFACTURER.contains("Genymotion") ||
+                (android.os.Build.BRAND.startsWith("generic") && android.os.Build.DEVICE.startsWith("generic")) ||
+                "google_sdk" == android.os.Build.PRODUCT
+
+        return if (isEmulator) {
+            "http://10.0.2.2:8081"
+        } else {
+            "http://192.168.137.1:8081"
+        }
+    }
 
     @Provides
     @Singleton
@@ -44,7 +61,7 @@ object NetworkModule {
     @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient, moshi: Moshi): Retrofit {
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(getBaseUrl())
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))
             .build()

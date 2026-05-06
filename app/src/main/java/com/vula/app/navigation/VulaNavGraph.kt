@@ -7,16 +7,20 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Chat
-import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,7 +45,6 @@ import com.vula.app.chat.ui.ChatListScreen
 import com.vula.app.chat.ui.ChatViewModel
 import com.vula.app.chat.ui.ConversationScreen
 import com.vula.app.contacts.ui.ContactsScreen
-import com.vula.app.core.data.PreferencesDataStore
 import com.vula.app.core.ui.OnboardingScreen
 import com.vula.app.global.ui.feed.FeedScreen
 import com.vula.app.global.ui.post.CommentScreen
@@ -61,18 +64,18 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object Onboarding  : Screen("onboarding",           "Welcome",    null)
     object Login       : Screen("login",                "Login",      null)
     object Register    : Screen("register",             "Register",   null)
-    object Feed        : Screen("feed",                 "Global",     Icons.Filled.Home)
+    object Feed        : Screen("feed",                 "Home",       Icons.Filled.Home)
     object Local       : Screen("local",                "Local Mode", Icons.Filled.Wifi)
-    object CreatePost  : Screen("create_post",          "Post",       Icons.Filled.AddCircle)
+    object CreatePost  : Screen("create_post",          "Post",       Icons.Filled.Add)
     object CreateStory : Screen("create_story",         "Story",      null)
-    object Chat        : Screen("chat",                 "Chat",       Icons.AutoMirrored.Filled.Chat)
+    object Chat        : Screen("chat",                 "Favorites",  Icons.Filled.FavoriteBorder)
     object Profile     : Screen("profile",              "Profile",    Icons.Filled.Person)
     object Settings    : Screen("settings",             "Settings",   null)
     object EditProfile : Screen("edit_profile",         "Edit",       null)
     object StoryViewer : Screen("story/{index}",        "Story",      null) {
         fun createRoute(index: Int) = "story/$index"
     }
-    object Search      : Screen("search",               "Search",     null)
+    object Search      : Screen("search",               "Search",     Icons.Filled.Search)
     object Comments    : Screen("comments/{postId}",    "Comments",   null) {
         fun createRoute(postId: String) = "comments/$postId"
     }
@@ -95,7 +98,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
 }
 
 val bottomNavScreens = listOf(
-    Screen.Feed, Screen.CreatePost, Screen.Chat, Screen.Profile
+    Screen.Feed, Screen.Search, Screen.CreatePost, Screen.Chat, Screen.Profile
 )
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
@@ -110,7 +113,6 @@ fun VulaApp(
     val currentRoute       = navBackStackEntry?.destination?.route
     val currentUser        by authViewModel.currentUser.collectAsState(initial = null)
     val unreadCount        by chatViewModel.unreadCount.collectAsState()
-    // Collect login state from DataStore-backed Flow
     val isLoggedIn         by authViewModel.isUserLoggedIn.collectAsState(initial = false)
 
     val startDest = remember {
@@ -131,33 +133,13 @@ fun VulaApp(
     }
 
     val showBottomBar = currentRoute in bottomNavScreens.map { it.route }
-    val drawerState = androidx.compose.material3.rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
-    val coroutineScope = rememberCoroutineScope()
-
-    androidx.compose.material3.ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            androidx.compose.material3.ModalDrawerSheet {
-                Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.NavigationDrawerItem(
-                    label = { Text("Settings") },
-                    selected = false,
-                    onClick = {
-                        coroutineScope.launch { drawerState.close() }
-                        navController.navigate(Screen.Settings.route)
-                    },
-                    modifier = Modifier.padding(androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp))
-                )
-            }
-        }
-    ) {
         Scaffold(
             bottomBar = {
                 if (showBottomBar) {
                     VulaBottomBar(
-                        navController  = navController,
-                        currentRoute   = currentRoute,
-                        chatUnread     = unreadCount
+                        navController = navController,
+                        currentRoute  = currentRoute,
+                        chatUnread    = unreadCount
                     )
                 }
             }
@@ -167,14 +149,12 @@ fun VulaApp(
                 currentUserId    = currentUser?.id,
                 chatViewModel    = chatViewModel,
                 startDestination = startDest,
-                openDrawer       = { coroutineScope.launch { drawerState.open() } },
                 modifier         = Modifier.padding(innerPadding)
             )
         }
-    }
 }
 
-// ─── Bottom Bar with animated tab scaling ─────────────────────────────────────
+// ─── Bottom Bar — pill shape, 5 icons, dot indicator ──────────────────────────
 
 @Composable
 fun VulaBottomBar(
@@ -182,63 +162,80 @@ fun VulaBottomBar(
     currentRoute: String?,
     chatUnread: Int
 ) {
-    Surface(
-        modifier        = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-        shape           = MaterialTheme.shapes.extraLarge,
-        shadowElevation = 8.dp,
-        color           = MaterialTheme.colorScheme.surface
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
     ) {
-        NavigationBar(
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
-            modifier       = Modifier.padding(horizontal = 8.dp)
+        Surface(
+            modifier        = Modifier
+                .padding(horizontal = 32.dp, vertical = 12.dp)
+                .height(56.dp),
+            shape           = CircleShape,
+            shadowElevation = 20.dp,
+            tonalElevation  = 0.dp,
+            color           = MaterialTheme.colorScheme.surface
         ) {
-            bottomNavScreens.forEach { screen ->
-                val isSelected = currentRoute == screen.route
-                // Animated scale for selected tab
-                val scale by animateFloatAsState(
-                    targetValue = if (isSelected) 1.18f else 1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness    = Spring.StiffnessMedium
-                    ),
-                    label = "tab_scale"
-                )
-                NavigationBarItem(
-                    selected = isSelected,
-                    onClick  = {
-                        if (currentRoute != screen.route) {
-                            navController.navigate(screen.route) {
-                                popUpTo(Screen.Feed.route) { saveState = true }
-                                launchSingleTop = true
-                                restoreState    = true
-                            }
-                        }
-                    },
-                    icon = {
-                        screen.icon?.let { icon ->
-                            if (screen == Screen.Chat && chatUnread > 0) {
-                                BadgedBox(badge = {
-                                    Badge { Text(if (chatUnread > 9) "9+" else "$chatUnread") }
-                                }) {
-                                    Icon(icon, contentDescription = screen.title,
-                                        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
-                                }
-                            } else {
-                                Icon(icon, contentDescription = screen.title,
-                                    modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale })
-                            }
-                        }
-                    },
-                    label           = if (isSelected) { { Text(screen.title) } } else null,
-                    alwaysShowLabel = false,
-                    colors          = NavigationBarItemDefaults.colors(
-                        selectedIconColor   = MaterialTheme.colorScheme.primary,
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        selectedTextColor   = MaterialTheme.colorScheme.primary,
-                        indicatorColor      = MaterialTheme.colorScheme.primaryContainer
+            NavigationBar(
+                containerColor = Color.Transparent,
+                tonalElevation = 0.dp,
+                modifier       = Modifier.padding(horizontal = 4.dp)
+            ) {
+                bottomNavScreens.forEach { screen ->
+                    val isSelected = currentRoute == screen.route
+                    val scale by animateFloatAsState(
+                        targetValue   = if (isSelected) 1.15f else 1f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness    = Spring.StiffnessMedium
+                        ),
+                        label = "tab_scale_${screen.route}"
                     )
-                )
+
+                    NavigationBarItem(
+                        selected = isSelected,
+                        onClick  = {
+                            if (currentRoute != screen.route) {
+                                navController.navigate(screen.route) {
+                                    popUpTo(Screen.Feed.route) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState    = true
+                                }
+                            }
+                        },
+                        icon = {
+                            screen.icon?.let { icon ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector        = icon,
+                                        contentDescription = screen.title,
+                                        modifier           = Modifier
+                                            .graphicsLayer { scaleX = scale; scaleY = scale }
+                                            .size(24.dp)
+                                    )
+                                    // Small dot under the active icon
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(top = 3.dp)
+                                                .size(4.dp)
+                                                .background(
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    shape = CircleShape
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        label           = null,
+                        alwaysShowLabel = false,
+                        colors          = NavigationBarItemDefaults.colors(
+                            selectedIconColor   = MaterialTheme.colorScheme.onSurface,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                            indicatorColor      = Color.Transparent
+                        )
+                    )
+                }
             }
         }
     }
@@ -253,7 +250,6 @@ fun VulaNavGraph(
     currentUserId: String?,
     chatViewModel: ChatViewModel,
     startDestination: String,
-    openDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     SharedTransitionLayout {
@@ -319,7 +315,6 @@ fun VulaNavGraph(
                         navController.navigate(Screen.CreateStory.route)
                     },
                     onDmReplyToPost = { post ->
-                        // Open a DM with the post author, pre-filling caption as reply context
                         chatViewModel.createDirectChat(post.authorId) { roomId ->
                             if (roomId != null) {
                                 navController.navigate(
@@ -330,8 +325,7 @@ fun VulaNavGraph(
                                 )
                             }
                         }
-                    },
-                    onMenuClick          = openDrawer
+                    }
                 )
             }
         }
@@ -339,7 +333,7 @@ fun VulaNavGraph(
         // Story Viewer
         composable(Screen.StoryViewer.route) { backStackEntry ->
             val indexStr = backStackEntry.arguments?.getString("index") ?: "0"
-            val index = indexStr.toIntOrNull() ?: 0
+            val index    = indexStr.toIntOrNull() ?: 0
             val parentEntry = remember(backStackEntry) {
                 navController.getBackStackEntry(Screen.Feed.route)
             }
@@ -347,20 +341,16 @@ fun VulaNavGraph(
             val stories by feedViewModel.stories.collectAsState()
 
             StoryViewerScreen(
-                stories = stories,
-                initialIndex = index,
+                stories       = stories,
+                initialIndex  = index,
                 currentUserId = currentUserId ?: "",
-                onDismiss = { navController.popBackStack() },
+                onDismiss     = { navController.popBackStack() },
                 onReplyToStory = { authorUserId, message ->
-                    // Create or find DM room, send the message, navigate
                     chatViewModel.createDirectChat(authorUserId) { roomId ->
                         if (roomId != null) {
                             chatViewModel.sendMessage(roomId, message)
                             navController.navigate(
-                                Screen.Conversation.createRoute(
-                                    roomId = roomId,
-                                    replyContext = null
-                                )
+                                Screen.Conversation.createRoute(roomId = roomId)
                             )
                         }
                     }
@@ -370,9 +360,7 @@ fun VulaNavGraph(
 
         // Local Mode
         composable(Screen.Local.route) {
-            LocalModeScreen(
-                onMenuClick = openDrawer
-            )
+            LocalModeScreen(onMenuClick = null)
         }
 
         // Create Post
@@ -390,28 +378,26 @@ fun VulaNavGraph(
         composable(Screen.CreateStory.route) {
             com.vula.app.global.ui.story.CreateStoryScreen(
                 onStoryCreated = { navController.popBackStack() },
-                onBackClick = { navController.popBackStack() }
+                onBackClick    = { navController.popBackStack() }
             )
         }
 
-        // Chat list
+        // Chat list  (mapped to Heart / Favorites tab)
         composable(Screen.Chat.route) {
             ChatListScreen(
-                onChatClick  = { roomId ->
+                onChatClick          = { roomId ->
                     navController.navigate(Screen.Conversation.createRoute(roomId))
                 },
-                onUserClick  = { userId ->
+                onUserClick          = { userId ->
                     navController.navigate(Screen.UserProfile.createRoute(userId))
                 },
-                onNavigateToContacts = {
-                    navController.navigate(Screen.Contacts.route)
-                },
-                onMenuClick  = openDrawer,
-                viewModel    = chatViewModel
+                onNavigateToContacts = { navController.navigate(Screen.Contacts.route) },
+                onMenuClick          = null,
+                viewModel            = chatViewModel
             )
         }
 
-        // Contacts List
+        // Contacts
         composable(Screen.Contacts.route) {
             ContactsScreen(
                 onBackClick    = { navController.popBackStack() },
@@ -420,7 +406,7 @@ fun VulaNavGraph(
                         if (roomId != null) {
                             navController.navigate(
                                 Screen.Conversation.createRoute(
-                                    roomId      = roomId,
+                                    roomId       = roomId,
                                     replyContext = richStatus,
                                     contactName  = contactName
                                 )
@@ -433,17 +419,17 @@ fun VulaNavGraph(
 
         // Conversation
         composable(
-            route = Screen.Conversation.routeWithArgs,
+            route     = Screen.Conversation.routeWithArgs,
             arguments = listOf(
-                navArgument("roomId") { type = NavType.StringType },
+                navArgument("roomId")       { type = NavType.StringType },
                 navArgument("replyContext") { type = NavType.StringType; nullable = true; defaultValue = null },
-                navArgument("contactName") { type = NavType.StringType; nullable = true; defaultValue = null }
+                navArgument("contactName")  { type = NavType.StringType; nullable = true; defaultValue = null }
             )
         ) { backStackEntry ->
             val roomId      = backStackEntry.arguments?.getString("roomId") ?: ""
             val rawCtx      = backStackEntry.arguments?.getString("replyContext")
             val rawName     = backStackEntry.arguments?.getString("contactName")
-            val replyCtx    = rawCtx?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+            val replyCtx    = rawCtx?.let  { java.net.URLDecoder.decode(it, "UTF-8") }
             val contactName = rawName?.let { java.net.URLDecoder.decode(it, "UTF-8") }
             ConversationScreen(
                 chatRoomId              = roomId,
@@ -458,24 +444,30 @@ fun VulaNavGraph(
 
         // Own Profile
         composable(Screen.Profile.route) {
+            val authVM: AuthViewModel = hiltViewModel()
             ProfileScreen(
-                userId                = null,
-                onLogoutClick         = {}, // Removed from here
-                onEditProfileClick    = { navController.navigate(Screen.EditProfile.route) },
+                userId                   = null,
+                onEditProfileClick       = { navController.navigate(Screen.EditProfile.route) },
                 onNavigateToConversation = { roomId ->
                     navController.navigate(Screen.Conversation.createRoute(roomId))
                 },
-                onMenuClick           = openDrawer
+                onMenuClick = null,
+                onLogoutClick = {
+                    authVM.logout()
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
             )
         }
 
         // Settings
         composable(Screen.Settings.route) {
-            val authViewModel: AuthViewModel = hiltViewModel()
+            val authVM: AuthViewModel = hiltViewModel()
             com.vula.app.global.ui.settings.SettingsScreen(
-                onBackClick = { navController.popBackStack() },
+                onBackClick   = { navController.popBackStack() },
                 onLogoutClick = {
-                    authViewModel.logout()
+                    authVM.logout()
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
                     }
@@ -485,9 +477,7 @@ fun VulaNavGraph(
 
         // Edit Profile
         composable(Screen.EditProfile.route) {
-            EditProfileScreen(
-                onBackClick = { navController.popBackStack() }
-            )
+            EditProfileScreen(onBackClick = { navController.popBackStack() })
         }
 
         // Another user's profile
