@@ -20,7 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,12 +46,13 @@ import com.vula.app.chat.ui.ChatViewModel
 import com.vula.app.chat.ui.ConversationScreen
 import com.vula.app.contacts.ui.ContactsScreen
 import com.vula.app.core.ui.OnboardingScreen
+import com.vula.app.global.ui.discover.DiscoverScreen
 import com.vula.app.global.ui.feed.FeedScreen
 import com.vula.app.global.ui.post.CommentScreen
 import com.vula.app.global.ui.post.CreatePostScreen
 import com.vula.app.global.ui.profile.EditProfileScreen
 import com.vula.app.global.ui.profile.ProfileScreen
-import com.vula.app.global.ui.search.SearchScreen
+// SearchScreen replaced by DiscoverScreen
 import com.vula.app.global.ui.story.StoryViewerScreen
 import com.vula.app.local.ui.LocalModeScreen
 import kotlinx.coroutines.flow.first
@@ -75,7 +76,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector?
     object StoryViewer : Screen("story/{index}",        "Story",      null) {
         fun createRoute(index: Int) = "story/$index"
     }
-    object Search      : Screen("search",               "Search",     Icons.Filled.Search)
+    object Search      : Screen("search",               "Discover",   Icons.Filled.Explore)
     object Comments    : Screen("comments/{postId}",    "Comments",   null) {
         fun createRoute(postId: String) = "comments/$postId"
     }
@@ -501,14 +502,22 @@ fun VulaNavGraph(
             )
         }
 
-        // Search
+        // Discover (replaces Search)
         composable(Screen.Search.route) {
-            SearchScreen(
-                onUserClick = { userId ->
-                    navController.navigate(Screen.UserProfile.createRoute(userId))
-                },
-                onBackClick = { navController.popBackStack() }
-            )
+            currentUserId?.let { uid ->
+                DiscoverScreen(
+                    currentUserId = uid,
+                    onUserClick   = { userId ->
+                        navController.navigate(Screen.UserProfile.createRoute(userId))
+                    },
+                    onPostClick   = { postId ->
+                        navController.navigate(Screen.Comments.createRoute(postId))
+                    },
+                    onCreatePost  = {
+                        navController.navigate(Screen.CreatePost.route)
+                    }
+                )
+            }
         }
     }
     } // end SharedTransitionLayout
