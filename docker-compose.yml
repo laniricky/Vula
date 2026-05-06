@@ -4,7 +4,7 @@ services:
   vula-api:
     build: ./backend
     ports:
-      - "8080:8080"
+      - "8081:8080"
     environment:
       - DB_URL=postgres://vula_admin:secure_password@postgres:5432/vula?sslmode=disable
       - REDIS_URL=redis:6379

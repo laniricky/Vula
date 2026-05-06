@@ -19,7 +19,7 @@ object NetworkModule {
 
     // IMPORTANT: For Android emulator to access localhost, use 10.0.2.2.
     // For physical device testing over Wi-Fi, change this to your PC's IP address (e.g. 192.168.1.10)
-    private const val BASE_URL = "http://192.168.137.1:8080"
+    private const val BASE_URL = "http://192.168.137.1:8081"
 
     @Provides
     @Singleton
