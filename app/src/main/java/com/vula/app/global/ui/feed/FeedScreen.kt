@@ -1,24 +1,23 @@
 package com.vula.app.global.ui.feed
 
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddBox
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,10 +26,10 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.vula.app.core.model.Post
+import com.vula.app.core.model.Story
 import com.vula.app.core.ui.components.AddStoryCard
 import com.vula.app.core.ui.components.SkeletonPostCard
 import com.vula.app.core.ui.components.StoryCard
-import com.vula.app.core.ui.components.VulaTopBar
 import com.vula.app.global.ui.components.PostCard
 
 @Composable
@@ -46,161 +45,45 @@ fun FeedScreen(
     onMenuClick: (() -> Unit)? = null,
     viewModel: FeedViewModel = hiltViewModel()
 ) {
-    val posts = viewModel.posts.collectAsLazyPagingItems()
-    val stories by viewModel.stories.collectAsState()
+    val posts      = viewModel.posts.collectAsLazyPagingItems()
+    val stories    by viewModel.stories.collectAsState()
     val contactMap by viewModel.contactMap.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("For you", "Following", "Popular")
+    val listState   = rememberLazyListState()
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+    // Show floating wordmark once user scrolls past the story row
+    val showTopBar by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
+
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            state          = listState,
+            modifier       = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 100.dp)
         ) {
+            // Status bar spacer (edge-to-edge — no VulaTopBar)
+            item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
 
-            // ── Top Bar ───────────────────────────────────────────────────────
+            // ── Stories bar ───────────────────────────────────────────────────
             item {
-                VulaTopBar(
-                    title = "Follow",
-                    onMenuClick = onMenuClick
+                FeedStoriesRow(
+                    stories          = stories,
+                    onStoryClick     = onNavigateToStory,
+                    onAddStoryClick  = onNavigateToCreateStory
                 )
             }
 
-            // ── Stories Row ───────────────────────────────────────────────────
+            // ── For You / Following pill toggle ───────────────────────────────
             item {
-                LazyRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    item {
-                        AddStoryCard(onClick = onNavigateToCreateStory)
-                    }
-                    items(stories) { story ->
-                        val index = stories.indexOf(story)
-                        StoryCard(
-                            story = story,
-                            onClick = { onNavigateToStory(index) }
-                        )
-                    }
-                }
-            }
-
-            // ── Divider ───────────────────────────────────────────────────────
-            item {
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    thickness = 1.dp
+                FeedTabPill(
+                    selectedTab    = selectedTab,
+                    onTabSelected  = { selectedTab = it },
+                    modifier       = Modifier.padding(vertical = 10.dp)
                 )
             }
 
-            // ── "What's on your mind?" bar ────────────────────────────────────
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .border(
-                            1.dp,
-                            MaterialTheme.colorScheme.surfaceVariant,
-                            RoundedCornerShape(14.dp)
-                        )
-                        .clickable { onNavigateToCreatePost() }
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Small avatar placeholder
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "What's on your mind?",
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
-                        fontSize = 15.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.Image,
-                        contentDescription = "Add image",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Icon(
-                        imageVector = Icons.Default.AddBox,
-                        contentDescription = "Add post",
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
-
-            // ── Tabs: For you / Following / Popular ───────────────────────────
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    tabs.forEachIndexed { index, label ->
-                        val isSelected = selectedTab == index
-                        Column(
-                            modifier = Modifier
-                                .clickable { selectedTab = index }
-                                .padding(end = 20.dp, bottom = 8.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = label,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 15.sp,
-                                color = if (isSelected)
-                                    MaterialTheme.colorScheme.onBackground
-                                else
-                                    MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f)
-                            )
-                            if (isSelected) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 3.dp)
-                                        .width(24.dp)
-                                        .height(2.5f.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(MaterialTheme.colorScheme.onBackground)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    Icon(
-                        imageVector = Icons.Default.Tune,
-                        contentDescription = "Filter",
-                        tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    thickness = 1.dp
-                )
-            }
-
-            // ── Initial loading skeletons ─────────────────────────────────────
+            // ── Skeleton loading ──────────────────────────────────────────────
             if (posts.loadState.refresh is LoadState.Loading) {
                 items(3) { SkeletonPostCard() }
             }
@@ -209,56 +92,151 @@ fun FeedScreen(
             if (posts.loadState.refresh is LoadState.NotLoading && posts.itemCount == 0) {
                 item {
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 64.dp),
+                        modifier         = Modifier.fillMaxWidth().padding(vertical = 80.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("📸", fontSize = 48.sp)
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                "No posts yet. Be the first!",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Text("📸", fontSize = 52.sp)
+                            Spacer(Modifier.height(14.dp))
+                            Text("Nothing here yet.", fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground)
+                            Spacer(Modifier.height(6.dp))
+                            Text("Follow people to see their posts",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.height(20.dp))
+                            Button(onClick = onNavigateToSearch, shape = RoundedCornerShape(14.dp)) {
+                                Text("Find people")
+                            }
                         }
                     }
                 }
             }
 
-            // ── Feed Posts ────────────────────────────────────────────────────
-            items(
-                count = posts.itemCount,
-                key = posts.itemKey { it.id }
-            ) { index ->
+            // ── Posts ─────────────────────────────────────────────────────────
+            items(count = posts.itemCount, key = posts.itemKey { it.id }) { index ->
                 val post = posts[index]
                 if (post != null) {
-                    val contactName = contactMap[post.authorId]
                     PostCard(
-                        post = post,
-                        currentUserId = currentUserId,
-                        contactName = contactName,
-                        onLikeClick    = { viewModel.likePost(it, currentUserId) },
-                        onUnlikeClick  = { viewModel.unlikePost(it, currentUserId) },
-                        onReactToPost  = { postId, emoji -> viewModel.reactToPost(postId, currentUserId, emoji) },
-                        onRemoveReaction = { postId -> viewModel.removeReaction(postId, currentUserId) },
-                        onCommentClick = { onNavigateToComments(it) },
-                        onDmReplyToPost = { onDmReplyToPost(it) },
-                        onUserClick    = { onNavigateToProfile(it) }
+                        post             = post,
+                        currentUserId    = currentUserId,
+                        contactName      = contactMap[post.authorId],
+                        onLikeClick      = { viewModel.likePost(it, currentUserId) },
+                        onUnlikeClick    = { viewModel.unlikePost(it, currentUserId) },
+                        onReactToPost    = { id, emoji -> viewModel.reactToPost(id, currentUserId, emoji) },
+                        onRemoveReaction = { viewModel.removeReaction(it, currentUserId) },
+                        onCommentClick   = { onNavigateToComments(it) },
+                        onDmReplyToPost  = { onDmReplyToPost(it) },
+                        onUserClick      = { onNavigateToProfile(it) }
                     )
                 }
             }
 
-            // ── Append loading ────────────────────────────────────────────────
+            // ── Append loading ─────────────────────────────────────────────────
             if (posts.loadState.append is LoadState.Loading) {
                 item {
+                    Box(Modifier.fillMaxWidth().padding(20.dp), Alignment.Center) {
+                        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    }
+                }
+            }
+        }
+
+        // ── Floating header (fades in after scrolling past stories) ───────────
+        AnimatedVisibility(
+            visible  = showTopBar,
+            enter    = fadeIn(tween(200)) + slideInVertically { -it },
+            exit     = fadeOut(tween(150)) + slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Surface(
+                modifier        = Modifier.fillMaxWidth(),
+                color           = MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
+                shadowElevation = 6.dp
+            ) {
+                Box(
+                    modifier         = Modifier.fillMaxWidth().statusBarsPadding().height(46.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "vula",
+                        fontWeight   = FontWeight.Black,
+                        fontSize     = 22.sp,
+                        letterSpacing = (-1).sp,
+                        color        = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ── Compact stories row ───────────────────────────────────────────────────────
+
+@Composable
+private fun FeedStoriesRow(
+    stories: List<Story>,
+    onStoryClick: (Int) -> Unit,
+    onAddStoryClick: () -> Unit
+) {
+    LazyRow(
+        modifier          = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        contentPadding    = PaddingValues(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { AddStoryCard(onClick = onAddStoryClick) }
+        items(stories, key = { it.id }) { story ->
+            val index = stories.indexOf(story)
+            StoryCard(story = story, onClick = { onStoryClick(index) })
+        }
+    }
+}
+
+// ── For You / Following pill switcher ─────────────────────────────────────────
+
+@Composable
+private fun FeedTabPill(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val tabs  = listOf("For You", "Following")
+    val haptic = LocalHapticFeedback.current
+
+    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surfaceVariant
+        ) {
+            Row(modifier = Modifier.padding(4.dp)) {
+                tabs.forEachIndexed { i, label ->
+                    val selected = selectedTab == i
+                    val bgColor by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.surfaceVariant,
+                        label = "tab_bg_$i"
+                    )
+                    val textColor by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        label = "tab_text_$i"
+                    )
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
+                            .clip(CircleShape)
+                            .background(bgColor)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onTabSelected(i)
+                            }
+                            .padding(horizontal = 24.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            label,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize   = 14.sp,
+                            color      = textColor
+                        )
                     }
                 }
             }

@@ -10,11 +10,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.ModeComment
 import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -77,12 +79,17 @@ fun DiscoverFilterRow(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    Text(filter.emoji, fontSize = 14.sp)
+                    Icon(
+                        imageVector        = filter.icon,
+                        contentDescription = null,
+                        modifier           = Modifier.size(15.dp),
+                        tint               = textColor
+                    )
                     Text(
                         filter.label,
-                        fontSize = 13.sp,
+                        fontSize   = 13.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = textColor
+                        color      = textColor
                     )
                 }
             }
@@ -107,11 +114,18 @@ fun TrendingTopicsRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                imageVector        = Icons.Default.Whatshot,
+                contentDescription = null,
+                tint               = MaterialTheme.colorScheme.primary,
+                modifier           = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
-                "🔥 Trending Now",
+                "Trending Now",
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 17.sp,
-                color = MaterialTheme.colorScheme.onBackground
+                fontSize   = 17.sp,
+                color      = MaterialTheme.colorScheme.onBackground
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -210,6 +224,7 @@ fun TrendingTopicCard(
 }
 
 // ─── Skeleton shimmer grid cells ─────────────────────────────────────────────
+// Heights mirror the real StaggeredExploreGrid pattern: tall=260dp, short=180dp.
 
 @Composable
 fun DiscoverSkeletonCell(height: Dp) {
@@ -220,6 +235,18 @@ fun DiscoverSkeletonCell(height: Dp) {
             .clip(RoundedCornerShape(12.dp))
             .background(shimmerBrush())
     )
+}
+
+/** Convenience: a row pair whose heights match the real staggered grid. */
+@Composable
+fun DiscoverSkeletonRow(tallOnLeft: Boolean) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        DiscoverSkeletonCell(height = if (tallOnLeft) 260.dp else 180.dp)
+        DiscoverSkeletonCell(height = if (tallOnLeft) 180.dp else 260.dp)
+    }
 }
 
 // ─── Staggered Explore Grid (2-col, manual layout) ────────────────────────────
@@ -465,12 +492,19 @@ fun PeopleSuggestionRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Icon(
+                imageVector        = Icons.Default.Group,
+                contentDescription = null,
+                tint               = MaterialTheme.colorScheme.primary,
+                modifier           = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(6.dp))
             Text(
-                "👥 People You May Know",
+                "People You May Know",
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 17.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.weight(1f)
+                fontSize   = 17.sp,
+                color      = MaterialTheme.colorScheme.onBackground,
+                modifier   = Modifier.weight(1f)
             )
         }
         Spacer(Modifier.height(12.dp))
@@ -561,9 +595,10 @@ fun SuggestedPersonCard(
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            if (suggested.mutualCount > 0) {
+            // Follower count gives context without faking mutual data
+            if (suggested.user.followersCount > 0) {
                 Text(
-                    "👥 ${suggested.mutualCount} mutuals",
+                    "${formatCount(suggested.user.followersCount)} followers",
                     fontSize = 9.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp)
@@ -612,6 +647,160 @@ fun SuggestedPersonCard(
                     Spacer(Modifier.width(3.dp))
                     Text("Follow", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                 }
+            }
+        }
+    }
+}
+
+// ─── People full list (used by PEOPLE filter tab) ───────────────────────────
+
+@Composable
+fun PeopleFullList(
+    people: List<SuggestedUser>,
+    followingState: Map<String, Boolean>,
+    onFollowClick: (String) -> Unit,
+    onUserClick: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (people.isEmpty()) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 64.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("👥", fontSize = 48.sp)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "No suggestions yet",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        return
+    }
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        people.forEach { suggested ->
+            val isFollowing = followingState[suggested.user.id] == true
+            PeopleListItem(
+                suggested    = suggested,
+                isFollowing  = isFollowing,
+                onFollowClick = { onFollowClick(suggested.user.id) },
+                onUserClick   = { onUserClick(suggested.user.id) }
+            )
+            HorizontalDivider(
+                modifier  = Modifier.padding(start = 72.dp),
+                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                thickness = 0.5.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeopleListItem(
+    suggested: SuggestedUser,
+    isFollowing: Boolean,
+    onFollowClick: () -> Unit,
+    onUserClick: () -> Unit
+) {
+    val haptic = LocalHapticFeedback.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onUserClick() }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Avatar
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary,
+                            MaterialTheme.colorScheme.tertiary
+                        )
+                    )
+                )
+                .padding(2.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!suggested.user.profileImageUrl.isNullOrEmpty()) {
+                AsyncImage(
+                    model = suggested.user.profileImageUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Text(
+                    suggested.user.username.take(1).uppercase(),
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+        // Name + bio
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "@${suggested.user.username}",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            if (suggested.user.bio.isNotBlank()) {
+                Text(
+                    suggested.user.bio,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else if (suggested.user.followersCount > 0) {
+                Text(
+                    "${formatCount(suggested.user.followersCount)} followers",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        // Follow / Following button
+        val btnColor by animateColorAsState(
+            if (isFollowing) MaterialTheme.colorScheme.surfaceVariant
+            else MaterialTheme.colorScheme.primary,
+            label = "people_btn_color"
+        )
+        val btnTextColor by animateColorAsState(
+            if (isFollowing) MaterialTheme.colorScheme.onSurfaceVariant
+            else MaterialTheme.colorScheme.onPrimary,
+            label = "people_btn_text_color"
+        )
+        Button(
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onFollowClick()
+            },
+            shape = RoundedCornerShape(20.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = btnColor,
+                contentColor   = btnTextColor
+            ),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+        ) {
+            if (isFollowing) {
+                Icon(Icons.Default.Check, null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Following", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            } else {
+                Icon(Icons.Default.PersonAdd, null, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Follow", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }

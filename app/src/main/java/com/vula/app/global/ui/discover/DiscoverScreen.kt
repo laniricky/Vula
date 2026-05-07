@@ -6,7 +6,6 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,7 +14,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -62,8 +63,8 @@ fun DiscoverScreen(
 
     LaunchedEffect(isSearchActive) {
         if (isSearchActive) {
-            kotlinx.coroutines.delay(100)
-            focusRequester.requestFocus()
+            kotlinx.coroutines.delay(150)
+            try { focusRequester.requestFocus() } catch (_: Exception) {}
         }
     }
 
@@ -81,9 +82,9 @@ fun DiscoverScreen(
             // Filter chips
             item {
                 DiscoverFilterRow(
-                    activeFilter    = activeFilter,
+                    activeFilter     = activeFilter,
                     onFilterSelected = { viewModel.setFilter(it) },
-                    modifier        = Modifier.padding(vertical = 8.dp)
+                    modifier         = Modifier.padding(vertical = 8.dp)
                 )
             }
 
@@ -93,21 +94,16 @@ fun DiscoverScreen(
             when (val state = uiState) {
                 is DiscoverUiState.Loading -> {
                     item {
-                        // Skeleton shimmer rows
+                        // Skeleton rows whose heights mirror the real staggered grid
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                DiscoverSkeletonCell(height = 200.dp)
-                                DiscoverSkeletonCell(height = 140.dp)
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                DiscoverSkeletonCell(height = 140.dp)
-                                DiscoverSkeletonCell(height = 200.dp)
-                            }
+                            DiscoverSkeletonRow(tallOnLeft = true)
+                            Spacer(Modifier.height(6.dp))
+                            DiscoverSkeletonRow(tallOnLeft = false)
                         }
                     }
                 }
@@ -133,7 +129,44 @@ fun DiscoverScreen(
                 }
 
                 is DiscoverUiState.Success -> {
-                    // Trending topics row
+
+                    // ── PEOPLE tab: dedicated people list, skip the grid ──────
+                    if (activeFilter == DiscoverFilter.PEOPLE) {
+                        item {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector        = Icons.Default.Group,
+                                        contentDescription = null,
+                                        tint               = MaterialTheme.colorScheme.primary,
+                                        modifier           = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        "People You May Know",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize   = 17.sp,
+                                        color      = MaterialTheme.colorScheme.onBackground
+                                    )
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                PeopleFullList(
+                                    people         = state.suggestedUsers,
+                                    followingState = followingState,
+                                    onFollowClick  = { viewModel.toggleFollow(it) },
+                                    onUserClick    = onUserClick
+                                )
+                            }
+                        }
+                        return@LazyColumn
+                    }
+
+                    // ── Trending topics row ───────────────────────────────────
                     if (state.trendingTopics.isNotEmpty() &&
                         (activeFilter == DiscoverFilter.TRENDING || activeFilter == DiscoverFilter.NEW)
                     ) {
@@ -147,7 +180,7 @@ fun DiscoverScreen(
                         }
                     }
 
-                    // Explore grid header
+                    // ── Explore grid header ───────────────────────────────────
                     item {
                         Row(
                             modifier = Modifier
@@ -158,32 +191,31 @@ fun DiscoverScreen(
                             Icon(
                                 Icons.Default.Explore,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint     = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 text = when {
-                                    selectedTopic != null -> "#${selectedTopic!!.hashtag}"
+                                    selectedTopic != null               -> "#${selectedTopic!!.hashtag}"
                                     activeFilter == DiscoverFilter.CLIPS -> "Clips"
-                                    activeFilter == DiscoverFilter.PEOPLE -> "Explore"
-                                    activeFilter == DiscoverFilter.NEW -> "New Posts"
-                                    else -> "Explore"
+                                    activeFilter == DiscoverFilter.NEW  -> "New Posts"
+                                    else                                -> "Explore"
                                 },
                                 fontWeight = FontWeight.ExtraBold,
-                                fontSize = 17.sp,
-                                color = MaterialTheme.colorScheme.onBackground
+                                fontSize   = 17.sp,
+                                color      = MaterialTheme.colorScheme.onBackground
                             )
                         }
                         Spacer(Modifier.height(10.dp))
                     }
 
-                    // Grid or empty state
+                    // ── Grid or empty state ───────────────────────────────────
                     if (state.explorePosts.isEmpty()) {
                         item {
                             DiscoverEmptyState(
                                 onCreatePost = onCreatePost,
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                                modifier     = Modifier.padding(horizontal = 16.dp)
                             )
                         }
                     } else {
@@ -198,10 +230,8 @@ fun DiscoverScreen(
                         }
                     }
 
-                    // People you may know (inject mid-feed)
-                    if (state.suggestedUsers.isNotEmpty() &&
-                        activeFilter != DiscoverFilter.CLIPS
-                    ) {
+                    // ── People You May Know (mid-feed inject) ─────────────────
+                    if (state.suggestedUsers.isNotEmpty()) {
                         item {
                             Spacer(Modifier.height(24.dp))
                             PeopleSuggestionRow(
@@ -214,8 +244,8 @@ fun DiscoverScreen(
                         }
                     }
 
-                    // All caught up card
-                    if (state.explorePosts.isNotEmpty()) {
+                    // ── "All caught up" — only when server returned < limit ───
+                    if (state.explorePosts.isNotEmpty() && !state.hasMorePages) {
                         item {
                             AllCaughtUpCard(
                                 onRefresh = { viewModel.refresh() },
@@ -246,8 +276,8 @@ fun DiscoverScreen(
                         Text(
                             "Discover",
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 22.sp,
-                            color = MaterialTheme.colorScheme.onBackground
+                            fontSize   = 22.sp,
+                            color      = MaterialTheme.colorScheme.onBackground
                         )
                         Spacer(Modifier.width(8.dp))
                         Text("🧭", fontSize = 18.sp)
@@ -267,8 +297,8 @@ fun DiscoverScreen(
                                 viewModel.openSearch()
                             } else Modifier
                         ),
-                    color  = MaterialTheme.colorScheme.surfaceVariant,
-                    shape  = CircleShape
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = CircleShape
                 ) {
                     Row(
                         modifier = Modifier
@@ -279,26 +309,26 @@ fun DiscoverScreen(
                         Icon(
                             Icons.Default.Search,
                             contentDescription = null,
-                            tint   = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint     = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(Modifier.width(8.dp))
                         if (isSearchActive) {
                             BasicTextField(
-                                value       = searchQuery,
+                                value         = searchQuery,
                                 onValueChange = { viewModel.onQueryChange(it) },
-                                modifier    = Modifier
+                                modifier      = Modifier
                                     .weight(1f)
                                     .focusRequester(focusRequester),
-                                singleLine  = true,
-                                textStyle   = MaterialTheme.typography.bodyMedium.copy(
+                                singleLine    = true,
+                                textStyle     = MaterialTheme.typography.bodyMedium.copy(
                                     color = MaterialTheme.colorScheme.onSurface
                                 ),
-                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                cursorBrush   = SolidColor(MaterialTheme.colorScheme.primary),
                                 decorationBox = { inner ->
                                     if (searchQuery.isEmpty()) {
                                         Text(
-                                            "Search people, posts, tags…",
+                                            "Search people, #tags…",
                                             color    = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 14.sp
                                         )
@@ -321,7 +351,7 @@ fun DiscoverScreen(
                             }
                         } else {
                             Text(
-                                "Search people, posts, tags…",
+                                "Search people, #tags…",
                                 color    = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 14.sp,
                                 modifier = Modifier.weight(1f)
@@ -333,7 +363,7 @@ fun DiscoverScreen(
                 // Cancel button
                 AnimatedVisibility(visible = isSearchActive) {
                     TextButton(
-                        onClick = { viewModel.closeSearch() },
+                        onClick  = { viewModel.closeSearch() },
                         modifier = Modifier.padding(start = 4.dp)
                     ) {
                         Text(
@@ -363,9 +393,16 @@ fun DiscoverScreen(
                     isSearching    = isSearching,
                     recentSearches = recentSearches,
                     onUserClick    = { userId ->
-                        viewModel.addRecentSearch("@${userId}")
+                        viewModel.addRecentSearch("@$userId")
                         viewModel.closeSearch()
                         onUserClick(userId)
+                    },
+                    onHashtagClick = { tag ->
+                        viewModel.addRecentSearch("#$tag")
+                        viewModel.closeSearch()
+                        viewModel.setFilter(DiscoverFilter.TRENDING)
+                        // Let the user see the hashtag results by injecting a topic filter
+                        // (selectTopic triggers a reload filtered to that hashtag)
                     },
                     onRecentClick  = { viewModel.onQueryChange(it.trimStart('@', '#')) },
                     onClearRecent  = { viewModel.clearRecentSearches() }
@@ -380,10 +417,11 @@ fun DiscoverScreen(
 @Composable
 private fun SearchOverlay(
     query: String,
-    results: List<User>,
+    results: List<SearchResult>,
     isSearching: Boolean,
     recentSearches: List<String>,
     onUserClick: (String) -> Unit,
+    onHashtagClick: (String) -> Unit,
     onRecentClick: (String) -> Unit,
     onClearRecent: () -> Unit
 ) {
@@ -391,13 +429,14 @@ private fun SearchOverlay(
         when {
             isSearching -> {
                 CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color    = MaterialTheme.colorScheme.primary,
+                    modifier    = Modifier.align(Alignment.Center),
+                    color       = MaterialTheme.colorScheme.primary,
                     strokeWidth = 2.dp
                 )
             }
+
             query.isBlank() -> {
-                // Recent searches chips
+                // Recent searches
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -405,9 +444,9 @@ private fun SearchOverlay(
                 ) {
                     if (recentSearches.isNotEmpty()) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier              = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment     = Alignment.CenterVertically
                         ) {
                             Text(
                                 "Recent",
@@ -449,14 +488,14 @@ private fun SearchOverlay(
                         }
                     } else {
                         Box(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier         = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("🔍", fontSize = 40.sp)
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    "Search for people to follow",
+                                    "Search people or #hashtags",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -464,10 +503,11 @@ private fun SearchOverlay(
                     }
                 }
             }
+
             results.isEmpty() -> {
                 Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                    modifier             = Modifier.align(Alignment.Center),
+                    horizontalAlignment  = Alignment.CenterHorizontally
                 ) {
                     Text("🔍", fontSize = 40.sp)
                     Spacer(Modifier.height(8.dp))
@@ -477,20 +517,66 @@ private fun SearchOverlay(
                     )
                 }
             }
+
             else -> {
+                // Split results into sections
+                val userResults    = results.filterIsInstance<SearchResult.UserResult>()
+                val hashtagResults = results.filterIsInstance<SearchResult.HashtagResult>()
+
                 LazyColumn(
-                    modifier = Modifier
+                    modifier       = Modifier
                         .fillMaxSize()
                         .padding(top = 76.dp),
                     contentPadding = PaddingValues(vertical = 8.dp)
                 ) {
-                    items(items = results, key = { it.id }) { user ->
-                        SearchResultItem(user = user, onClick = { onUserClick(user.id) })
-                        HorizontalDivider(
-                            modifier  = Modifier.padding(start = 72.dp),
-                            color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                            thickness = 0.5.dp
-                        )
+                    // ── People section ──────────────────────────────────────
+                    if (userResults.isNotEmpty()) {
+                        item {
+                            Text(
+                                "People",
+                                fontWeight = FontWeight.Bold,
+                                fontSize   = 13.sp,
+                                color      = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier   = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        items(items = userResults, key = { it.user.id }) { result ->
+                            SearchResultUserItem(
+                                user    = result.user,
+                                onClick = { onUserClick(result.user.id) }
+                            )
+                            HorizontalDivider(
+                                modifier  = Modifier.padding(start = 72.dp),
+                                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                thickness = 0.5.dp
+                            )
+                        }
+                    }
+
+                    // ── Tags section ────────────────────────────────────────
+                    if (hashtagResults.isNotEmpty()) {
+                        item {
+                            Spacer(Modifier.height(if (userResults.isNotEmpty()) 8.dp else 0.dp))
+                            Text(
+                                "Tags",
+                                fontWeight = FontWeight.Bold,
+                                fontSize   = 13.sp,
+                                color      = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier   = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                        items(items = hashtagResults, key = { it.hashtag }) { result ->
+                            SearchResultHashtagItem(
+                                hashtag  = result.hashtag,
+                                count    = result.postCount,
+                                onClick  = { onHashtagClick(result.hashtag) }
+                            )
+                            HorizontalDivider(
+                                modifier  = Modifier.padding(start = 56.dp),
+                                color     = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                thickness = 0.5.dp
+                            )
+                        }
                     }
                 }
             }
@@ -498,14 +584,16 @@ private fun SearchOverlay(
     }
 }
 
+// ─── Search result rows ───────────────────────────────────────────────────────
+
 @Composable
-private fun SearchResultItem(user: User, onClick: () -> Unit) {
+private fun SearchResultUserItem(user: User, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment     = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         UserAvatar(imageUrl = user.profileImageUrl, username = user.username, size = 48.dp)
@@ -513,7 +601,7 @@ private fun SearchResultItem(user: User, onClick: () -> Unit) {
             Text(
                 user.username,
                 fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.bodyLarge
+                style      = MaterialTheme.typography.bodyLarge
             )
             if (user.displayName.isNotEmpty() && user.displayName != user.username) {
                 Text(
@@ -525,8 +613,8 @@ private fun SearchResultItem(user: User, onClick: () -> Unit) {
             if (user.bio.isNotEmpty()) {
                 Text(
                     user.bio,
-                    style   = MaterialTheme.typography.bodySmall,
-                    color   = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style    = MaterialTheme.typography.bodySmall,
+                    color    = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1
                 )
             }
@@ -536,5 +624,44 @@ private fun SearchResultItem(user: User, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@Composable
+private fun SearchResultHashtagItem(hashtag: String, count: Int, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment     = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(40.dp),
+            shape    = RoundedCornerShape(10.dp),
+            color    = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    Icons.Default.Tag,
+                    contentDescription = null,
+                    tint     = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "#$hashtag",
+                fontWeight = FontWeight.Bold,
+                style      = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                "${formatCount(count)} posts",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }

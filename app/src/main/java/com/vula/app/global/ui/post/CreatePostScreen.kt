@@ -165,170 +165,174 @@ fun CreatePostScreen(
                 }) { Text("Allow Camera") }
             }
         } else {
-            // ── Live Viewfinder (fills top ~65%) ──────────────────────────────
-            Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    factory = { previewView },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(0.72f)
-                        .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
-                )
+            // ── Main Column: viewfinder on top, gallery flush below ───────────
+            Column(modifier = Modifier.fillMaxSize()) {
 
-                // Gradient at bottom of viewfinder for legibility
+                // ── Live Viewfinder ───────────────────────────────────────────
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(120.dp)
-                        .align(Alignment.BottomCenter)
-                        .offset(y = (-220).dp)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
-                            )
-                        )
-                )
-
-                // ── Top Bar ────────────────────────────────────────────────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                        .align(Alignment.TopCenter),
-                    verticalAlignment = Alignment.CenterVertically
+                        .weight(1f)   // takes all remaining space above the gallery
                 ) {
-                    IconButton(onClick = onPostCreated) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    // Flash toggle
-                    IconButton(onClick = { flashEnabled = !flashEnabled }) {
-                        Icon(
-                            if (flashEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                            null, tint = Color.White
-                        )
-                    }
-                }
-
-                // ── Content Type Switcher (overlaid on viewfinder top) ─────────
-                ContentTypeBar(
-                    selected = contentType,
-                    onSelect = {
-                        contentType = it
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    },
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 72.dp)
-                        .statusBarsPadding()
-                )
-
-                // ── Capture Controls (inside viewfinder at bottom edge) ────────
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 32.dp, vertical = 16.dp)
-                        .align(Alignment.BottomCenter)
-                        .offset(y = (-230).dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Flip camera
-                    IconButton(onClick = {
-                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT)
-                            CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
-                    }) {
-                        Icon(Icons.Default.Cameraswitch, null, tint = Color.White, modifier = Modifier.size(28.dp))
-                    }
-
-                    // Capture Button: tap = photo, hold = video
-                    val captureRingScale by animateFloatAsState(
-                        targetValue = if (isRecording) 1.2f else 1f,
-                        animationSpec = spring(Spring.DampingRatioMediumBouncy),
-                        label = "ring"
+                    AndroidView(
+                        factory = { previewView },
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
                     )
+
+                    // Gradient at the very bottom of the viewfinder for legibility
                     Box(
                         modifier = Modifier
-                            .size((80 * captureRingScale).dp)
-                            .border(
-                                width = if (isRecording) 6.dp else 4.dp,
-                                color = if (isRecording) Color.Red else Color.White,
-                                shape = CircleShape
-                            )
-                            .padding(10.dp)
-                            .clip(CircleShape)
-                            .background(if (isRecording) Color.Red else Color.White)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onTap = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        val file = File(context.cacheDir, "photo_${System.currentTimeMillis()}.jpg")
-                                        val opts = ImageCapture.OutputFileOptions.Builder(file).build()
-                                        imageCapture.takePicture(
-                                            opts,
-                                            ContextCompat.getMainExecutor(context),
-                                            object : ImageCapture.OnImageSavedCallback {
-                                                override fun onImageSaved(out: ImageCapture.OutputFileResults) {
-                                                    capturedUri = Uri.fromFile(file)
-                                                    capturedMediaType = "image"
-                                                    showBottomSheet = true
-                                                }
-                                                override fun onError(e: ImageCaptureException) {
-                                                    Log.e("Camera", "Capture failed", e)
-                                                }
-                                            }
-                                        )
-                                    },
-                                    onPress = {
-                                        val file = File(context.cacheDir, "video_${System.currentTimeMillis()}.mp4")
-                                        val opts = FileOutputOptions.Builder(file).build()
-                                        val rec = videoCapture.output
-                                            .prepareRecording(context, opts)
-                                            .withAudioEnabled()
-                                            .start(ContextCompat.getMainExecutor(context)) { event ->
-                                                when (event) {
-                                                    is VideoRecordEvent.Start -> isRecording = true
-                                                    is VideoRecordEvent.Finalize -> {
-                                                        isRecording = false
-                                                        if (!event.hasError()) {
-                                                            capturedUri = Uri.fromFile(file)
-                                                            capturedMediaType = "video"
-                                                            showBottomSheet = true
-                                                        }
-                                                        recording?.close(); recording = null
-                                                    }
-                                                }
-                                            }
-                                        recording = rec
-                                        tryAwaitRelease()
-                                        recording?.stop(); recording = null
-                                    }
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .align(Alignment.BottomCenter)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
                                 )
-                            }
+                            )
                     )
 
-                    // Gallery quick-pick
-                    IconButton(onClick = { galleryLauncher.launch("image/*") }) {
-                        Icon(Icons.Default.PhotoLibrary, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                    // ── Top Bar ───────────────────────────────────────────────
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                            .align(Alignment.TopCenter),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onPostCreated) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { flashEnabled = !flashEnabled }) {
+                            Icon(
+                                if (flashEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
+                                null, tint = Color.White
+                            )
+                        }
                     }
-                }
 
-                // ── Hint label ────────────────────────────────────────────────
-                Text(
-                    text = if (isRecording) "● Recording — release to stop" else "Tap photo  •  Hold for video",
-                    color = Color.White.copy(alpha = 0.75f),
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .offset(y = (-195).dp)
-                )
+                    // ── Content Type Switcher ─────────────────────────────────
+                    ContentTypeBar(
+                        selected = contentType,
+                        onSelect = {
+                            contentType = it
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = 64.dp)
+                    )
 
-                // ── Real Gallery Row ──────────────────────────────────────────
+                    // ── Hint label ────────────────────────────────────────────
+                    Text(
+                        text = if (isRecording) "● Recording — release to stop" else "Tap photo  •  Hold for video",
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 12.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 8.dp)
+                    )
+
+                    // ── Capture Controls (anchored to viewfinder bottom) ──────
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 32.dp)
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 32.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Flip camera
+                        IconButton(onClick = {
+                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_FRONT)
+                                CameraSelector.LENS_FACING_BACK else CameraSelector.LENS_FACING_FRONT
+                        }) {
+                            Icon(Icons.Default.Cameraswitch, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                        }
+
+                        // Capture Button: tap = photo, hold = video
+                        val captureRingScale by animateFloatAsState(
+                            targetValue = if (isRecording) 1.2f else 1f,
+                            animationSpec = spring(Spring.DampingRatioMediumBouncy),
+                            label = "ring"
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size((80 * captureRingScale).dp)
+                                .border(
+                                    width = if (isRecording) 6.dp else 4.dp,
+                                    color = if (isRecording) Color.Red else Color.White,
+                                    shape = CircleShape
+                                )
+                                .padding(10.dp)
+                                .clip(CircleShape)
+                                .background(if (isRecording) Color.Red else Color.White)
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            val file = File(context.cacheDir, "photo_${System.currentTimeMillis()}.jpg")
+                                            val opts = ImageCapture.OutputFileOptions.Builder(file).build()
+                                            imageCapture.takePicture(
+                                                opts,
+                                                ContextCompat.getMainExecutor(context),
+                                                object : ImageCapture.OnImageSavedCallback {
+                                                    override fun onImageSaved(out: ImageCapture.OutputFileResults) {
+                                                        capturedUri = Uri.fromFile(file)
+                                                        capturedMediaType = "image"
+                                                        showBottomSheet = true
+                                                    }
+                                                    override fun onError(e: ImageCaptureException) {
+                                                        Log.e("Camera", "Capture failed", e)
+                                                    }
+                                                }
+                                            )
+                                        },
+                                        onPress = {
+                                            val file = File(context.cacheDir, "video_${System.currentTimeMillis()}.mp4")
+                                            val opts = FileOutputOptions.Builder(file).build()
+                                            val rec = videoCapture.output
+                                                .prepareRecording(context, opts)
+                                                .withAudioEnabled()
+                                                .start(ContextCompat.getMainExecutor(context)) { event ->
+                                                    when (event) {
+                                                        is VideoRecordEvent.Start -> isRecording = true
+                                                        is VideoRecordEvent.Finalize -> {
+                                                            isRecording = false
+                                                            if (!event.hasError()) {
+                                                                capturedUri = Uri.fromFile(file)
+                                                                capturedMediaType = "video"
+                                                                showBottomSheet = true
+                                                            }
+                                                            recording?.close(); recording = null
+                                                        }
+                                                    }
+                                                }
+                                            recording = rec
+                                            tryAwaitRelease()
+                                            recording?.stop(); recording = null
+                                        }
+                                    )
+                                }
+                        )
+
+                        // Gallery quick-pick
+                        IconButton(onClick = { galleryLauncher.launch("image/*") }) {
+                            Icon(Icons.Default.PhotoLibrary, null, tint = Color.White, modifier = Modifier.size(28.dp))
+                        }
+                    }
+                } // end viewfinder Box
+
+                // ── Gallery Section (flush below viewfinder, no gap) ──────────
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
                         .background(Color.Black)
                         .padding(bottom = 8.dp)
                 ) {
@@ -388,7 +392,7 @@ fun CreatePostScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                 }
-            }
+            } // end main Column
         }
 
         // ── Post Details Bottom Sheet ──────────────────────────────────────────
