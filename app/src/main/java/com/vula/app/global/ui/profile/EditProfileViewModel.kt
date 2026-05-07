@@ -29,14 +29,27 @@ class EditProfileViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<EditProfileUiState>(EditProfileUiState.Idle)
     val uiState: StateFlow<EditProfileUiState> = _uiState.asStateFlow()
 
-    var displayName by mutableStateOf("")
-    var bio by mutableStateOf("")
-    var pendingPhotoUri by mutableStateOf<Uri?>(null)
-    var currentImageUrl by mutableStateOf<String?>(null)
+    // ── Identity ──────────────────────────────────────────────────────────────
+    var displayName      by mutableStateOf("")
+    var username         by mutableStateOf("")
+    var bio              by mutableStateOf("")
 
-    init {
-        loadCurrentProfile()
-    }
+    // ── Avatar ────────────────────────────────────────────────────────────────
+    var pendingPhotoUri  by mutableStateOf<Uri?>(null)
+    var currentImageUrl  by mutableStateOf<String?>(null)
+
+    // ── Banner ────────────────────────────────────────────────────────────────
+    var pendingBannerUri by mutableStateOf<Uri?>(null)
+    var currentBannerUrl by mutableStateOf<String?>(null)
+
+    // ── Presence ──────────────────────────────────────────────────────────────
+    var richStatus       by mutableStateOf("")
+    var website          by mutableStateOf("")
+
+    // ── Privacy ───────────────────────────────────────────────────────────────
+    var isPrivate        by mutableStateOf(false)
+
+    init { loadCurrentProfile() }
 
     private fun loadCurrentProfile() {
         val uid = auth.currentUser?.uid ?: return
@@ -45,37 +58,52 @@ class EditProfileViewModel @Inject constructor(
                 val doc = firestore.collection(Constants.USERS_COLLECTION).document(uid).get().await()
                 val user = doc.toObject(User::class.java)
                 user?.let {
-                    displayName = it.displayName
-                    bio = it.bio
-                    currentImageUrl = it.profileImageUrl
+                    displayName      = it.displayName
+                    bio              = it.bio
+                    currentImageUrl  = it.profileImageUrl
                 }
+                // Extended fields (may not exist in older documents — safe defaults)
+                username         = doc.getString("username")    ?: ""
+                richStatus       = doc.getString("richStatus")  ?: ""
+                website          = doc.getString("website")     ?: ""
+                currentBannerUrl = doc.getString("bannerUrl")   ?: null
+                isPrivate        = doc.getBoolean("isPrivate")  ?: false
             } catch (_: Exception) {}
         }
     }
 
-    fun onPhotoSelected(uri: Uri) {
-        pendingPhotoUri = uri
-    }
+    fun onPhotoSelected(uri: Uri)  { pendingPhotoUri  = uri }
+    fun onBannerSelected(uri: Uri) { pendingBannerUri = uri }
 
     fun saveProfile() {
         val uid = auth.currentUser?.uid ?: return
         viewModelScope.launch {
             _uiState.value = EditProfileUiState.Saving
             try {
-                // Upload new photo if selected
+                // Upload avatar
                 val imageUrl: String? = if (pendingPhotoUri != null) {
                     val ref = storage.reference.child("profile_photos/$uid.jpg")
                     ref.putFile(pendingPhotoUri!!).await()
                     ref.downloadUrl.await().toString()
-                } else {
-                    currentImageUrl
-                }
+                } else currentImageUrl
+
+                // Upload banner
+                val bannerUrl: String? = if (pendingBannerUri != null) {
+                    val ref = storage.reference.child("profile_banners/$uid.jpg")
+                    ref.putFile(pendingBannerUri!!).await()
+                    ref.downloadUrl.await().toString()
+                } else currentBannerUrl
 
                 val updates = mutableMapOf<String, Any>(
                     "displayName" to displayName.trim(),
-                    "bio" to bio.trim()
+                    "bio"         to bio.trim(),
+                    "username"    to username.trim().lowercase(),
+                    "richStatus"  to richStatus.trim(),
+                    "website"     to website.trim(),
+                    "isPrivate"   to isPrivate
                 )
-                if (imageUrl != null) updates["profileImageUrl"] = imageUrl
+                if (imageUrl  != null) updates["profileImageUrl"] = imageUrl
+                if (bannerUrl != null) updates["bannerUrl"]       = bannerUrl
 
                 firestore.collection(Constants.USERS_COLLECTION)
                     .document(uid)
@@ -91,8 +119,8 @@ class EditProfileViewModel @Inject constructor(
 }
 
 sealed class EditProfileUiState {
-    object Idle : EditProfileUiState()
-    object Saving : EditProfileUiState()
+    object Idle        : EditProfileUiState()
+    object Saving      : EditProfileUiState()
     object SaveSuccess : EditProfileUiState()
     data class Error(val message: String) : EditProfileUiState()
 }
