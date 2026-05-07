@@ -34,6 +34,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -539,16 +542,18 @@ fun ContentTypeBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = 
 
 @Composable
 fun AudiencePicker(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val options = listOf(
-        Triple("🌍", "Everyone", MaterialTheme.colorScheme.primary),
-        Triple("👥", "Contacts", MaterialTheme.colorScheme.tertiary),
-        Triple("🔒", "Private", Color(0xFF9E9E9E))
+    data class AudienceOption(val icon: androidx.compose.ui.graphics.vector.ImageVector, val label: String, val accent: Color)
+    @Composable fun options() = listOf(
+        AudienceOption(Icons.Default.Public, "Everyone", MaterialTheme.colorScheme.primary),
+        AudienceOption(Icons.Default.Group,  "Contacts", MaterialTheme.colorScheme.tertiary),
+        AudienceOption(Icons.Default.Lock,   "Private",  Color(0xFF9E9E9E))
     )
+    val opts = options()
     Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        options.forEachIndexed { index, (emoji, label, accent) ->
+        opts.forEachIndexed { index, opt ->
             val isSelected = selected == index
             val border by animateColorAsState(
-                if (isSelected) accent else MaterialTheme.colorScheme.outlineVariant, label = "b"
+                if (isSelected) opt.accent else MaterialTheme.colorScheme.outlineVariant, label = "b"
             )
             Surface(
                 modifier = Modifier
@@ -556,18 +561,23 @@ fun AudiencePicker(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = 
                     .clip(RoundedCornerShape(12.dp))
                     .border(if (isSelected) 1.5.dp else 1.dp, border, RoundedCornerShape(12.dp))
                     .clickable { onSelect(index) },
-                color = if (isSelected) accent.copy(alpha = 0.08f) else Color.Transparent
+                color = if (isSelected) opt.accent.copy(alpha = 0.08f) else Color.Transparent
             ) {
                 Column(
                     modifier = Modifier.padding(vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(emoji, fontSize = 20.sp)
+                    Icon(
+                        imageVector        = opt.icon,
+                        contentDescription = opt.label,
+                        tint               = if (isSelected) opt.accent else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f),
+                        modifier           = Modifier.size(22.dp)
+                    )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        label, fontSize = 12.sp,
+                        opt.label, fontSize = 12.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSelected) accent else MaterialTheme.colorScheme.onSurface.copy(0.5f)
+                        color = if (isSelected) opt.accent else MaterialTheme.colorScheme.onSurface.copy(0.5f)
                     )
                 }
             }

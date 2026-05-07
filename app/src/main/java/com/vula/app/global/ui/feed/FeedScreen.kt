@@ -11,6 +11,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +33,7 @@ import com.vula.app.core.model.Story
 import com.vula.app.core.ui.components.AddStoryCard
 import com.vula.app.core.ui.components.SkeletonPostCard
 import com.vula.app.core.ui.components.StoryCard
+import com.vula.app.core.ui.components.VulaTopBar
 import com.vula.app.global.ui.components.PostCard
 
 @Composable
@@ -52,9 +56,6 @@ fun FeedScreen(
     var selectedTab by remember { mutableIntStateOf(0) }
     val listState   = rememberLazyListState()
 
-    // Show floating wordmark once user scrolls past the story row
-    val showTopBar by remember { derivedStateOf { listState.firstVisibleItemIndex > 1 } }
-
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
 
         LazyColumn(
@@ -62,8 +63,24 @@ fun FeedScreen(
             modifier       = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 100.dp)
         ) {
-            // Status bar spacer (edge-to-edge — no VulaTopBar)
-            item { Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars)) }
+
+            // ── Top bar matching Activity/Profile theme ───────────────────────
+            item {
+                VulaTopBar(
+                    title     = "Home",
+                    showStats = false,
+                    actions   = {
+                        IconButton(onClick = onNavigateToSearch) {
+                            Icon(Icons.Default.Search, contentDescription = "Search",
+                                tint = MaterialTheme.colorScheme.onBackground)
+                        }
+                        IconButton(onClick = {}) {
+                            Icon(Icons.Default.Notifications, contentDescription = "Notifications",
+                                tint = MaterialTheme.colorScheme.onBackground)
+                        }
+                    }
+                )
+            }
 
             // ── Stories bar ───────────────────────────────────────────────────
             item {
@@ -74,12 +91,11 @@ fun FeedScreen(
                 )
             }
 
-            // ── For You / Following pill toggle ───────────────────────────────
+            // ── For You / Following FilterChip row ────────────────────────────
             item {
-                FeedTabPill(
-                    selectedTab    = selectedTab,
-                    onTabSelected  = { selectedTab = it },
-                    modifier       = Modifier.padding(vertical = 10.dp)
+                FeedTabChips(
+                    selectedTab   = selectedTab,
+                    onTabSelected = { selectedTab = it }
                 )
             }
 
@@ -140,33 +156,6 @@ fun FeedScreen(
                 }
             }
         }
-
-        // ── Floating header (fades in after scrolling past stories) ───────────
-        AnimatedVisibility(
-            visible  = showTopBar,
-            enter    = fadeIn(tween(200)) + slideInVertically { -it },
-            exit     = fadeOut(tween(150)) + slideOutVertically { -it },
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            Surface(
-                modifier        = Modifier.fillMaxWidth(),
-                color           = MaterialTheme.colorScheme.background.copy(alpha = 0.93f),
-                shadowElevation = 6.dp
-            ) {
-                Box(
-                    modifier         = Modifier.fillMaxWidth().statusBarsPadding().height(46.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "vula",
-                        fontWeight   = FontWeight.Black,
-                        fontSize     = 22.sp,
-                        letterSpacing = (-1).sp,
-                        color        = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -191,55 +180,39 @@ private fun FeedStoriesRow(
     }
 }
 
-// ── For You / Following pill switcher ─────────────────────────────────────────
+// ── FilterChip tab row (matches Activity tab style) ──────────────────────────
 
 @Composable
-private fun FeedTabPill(
+private fun FeedTabChips(
     selectedTab: Int,
-    onTabSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    onTabSelected: (Int) -> Unit
 ) {
     val tabs  = listOf("For You", "Following")
     val haptic = LocalHapticFeedback.current
-
-    Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-        Surface(
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceVariant
-        ) {
-            Row(modifier = Modifier.padding(4.dp)) {
-                tabs.forEachIndexed { i, label ->
-                    val selected = selectedTab == i
-                    val bgColor by animateColorAsState(
-                        if (selected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.surfaceVariant,
-                        label = "tab_bg_$i"
+    LazyRow(
+        modifier          = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(tabs.size) { i ->
+            val isSelected = selectedTab == i
+            FilterChip(
+                selected = isSelected,
+                onClick  = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onTabSelected(i)
+                },
+                label = {
+                    Text(
+                        tabs[i],
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                     )
-                    val textColor by animateColorAsState(
-                        if (selected) MaterialTheme.colorScheme.onPrimary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        label = "tab_text_$i"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(bgColor)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onTabSelected(i)
-                            }
-                            .padding(horizontal = 24.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            label,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            fontSize   = 14.sp,
-                            color      = textColor
-                        )
-                    }
-                }
-            }
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MaterialTheme.colorScheme.onBackground,
+                    selectedLabelColor     = MaterialTheme.colorScheme.background
+                ),
+                shape = RoundedCornerShape(20.dp)
+            )
         }
     }
 }
