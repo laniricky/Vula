@@ -1,75 +1,61 @@
 package com.vula.app.global.data
 
+import android.content.Context
 import android.net.Uri
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.storage.FirebaseStorage
 import com.vula.app.core.model.Story
-import com.vula.app.core.model.User
-import com.vula.app.core.util.Constants
-import kotlinx.coroutines.channels.awaitClose
+import com.vula.app.core.network.VulaApiService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
-import java.util.UUID
+import kotlinx.coroutines.flow.flow
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 
 class StoryRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage,
-    private val auth: FirebaseAuth
+    private val api: VulaApiService,
+    @ApplicationContext private val context: Context
 ) : StoryRepository {
 
-    override fun getStories(): Flow<List<Story>> = callbackFlow {
-        val now = System.currentTimeMillis()
-        val query = firestore.collection("stories")
-            .whereGreaterThan("expiresAt", now)
-            .orderBy("expiresAt", Query.Direction.DESCENDING)
-
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            if (snapshot != null) {
-                val stories = snapshot.documents.mapNotNull { it.toObject(Story::class.java) }
-                trySend(stories)
-            }
+    override fun getStories(): Flow<List<Story>> = flow {
+        val response = api.getStories()
+        if (response.isSuccessful) {
+            emit(response.body()?.map {
+                Story(
+                    id                    = it.id,
+                    authorId              = it.authorId,
+                    authorUsername        = it.authorUsername,
+                    authorProfileImageUrl = it.authorProfileImageUrl,
+                    imageUrl              = it.imageUrl,
+                    mediaType             = it.mediaType,
+                    createdAt             = it.createdAt,
+                    expiresAt             = it.expiresAt
+                )
+            } ?: emptyList())
+        } else {
+            emit(emptyList())
         }
-        awaitClose { listener.remove() }
     }
 
     override suspend fun createStory(mediaUri: Uri, mediaType: String): Result<Unit> {
         return try {
-            val currentUser = auth.currentUser ?: throw Exception("Not authenticated")
-            val userDoc = firestore.collection(Constants.USERS_COLLECTION).document(currentUser.uid).get().await()
-            val user = userDoc.toObject(User::class.java) ?: throw Exception("User not found")
+            val inputStream = context.contentResolver.openInputStream(mediaUri)
+                ?: return Result.failure(Exception("Cannot open media"))
+            val ext  = if (mediaType == "video") "mp4" else "jpg"
+            val file = File(context.cacheDir, "story_${System.currentTimeMillis()}.$ext")
+            FileOutputStream(file).use { out -> inputStream.copyTo(out) }
 
-            // Upload to storage
-            val extension = if (mediaType == "video") "mp4" else "jpg"
-            val mediaRef = storage.reference.child("stories/${currentUser.uid}/${UUID.randomUUID()}.$extension")
-            mediaRef.putFile(mediaUri).await()
-            val mediaUrl = mediaRef.downloadUrl.await().toString()
+            val mime        = if (mediaType == "video") "video/mp4" else "image/jpeg"
+            val requestBody = file.asRequestBody(mime.toMediaTypeOrNull())
+            val mediaPart   = MultipartBody.Part.createFormData("media", file.name, requestBody)
+            val typePart    = mediaType.toRequestBody("text/plain".toMediaTypeOrNull())
 
-            val storyRef = firestore.collection("stories").document()
-            
-            val now = System.currentTimeMillis()
-            val expiresAt = now + (24 * 60 * 60 * 1000) // 24 hours
-
-            val story = Story(
-                id = storyRef.id,
-                authorId = user.id,
-                authorUsername = user.username,
-                authorProfileImageUrl = user.profileImageUrl,
-                imageUrl = mediaUrl,
-                mediaType = mediaType,
-                createdAt = now,
-                expiresAt = expiresAt
-            )
-
-            storyRef.set(story).await()
-            Result.success(Unit)
+            val response = api.createStory(mediaPart, typePart)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Create story failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }

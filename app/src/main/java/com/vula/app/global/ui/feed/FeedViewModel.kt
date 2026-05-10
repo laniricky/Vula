@@ -6,12 +6,13 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import com.google.firebase.firestore.FirebaseFirestore
 import com.vula.app.contacts.data.ContactSyncManager
 import com.vula.app.core.model.Post
 import com.vula.app.core.model.Story
+import com.vula.app.core.util.Constants
 import com.vula.app.global.data.FeedPagingSource
 import com.vula.app.global.data.PostRepository
+import com.vula.app.global.data.StoryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,17 +23,18 @@ import javax.inject.Inject
 
 @HiltViewModel
 class FeedViewModel @Inject constructor(
-    private val firestore: FirebaseFirestore,
+    private val api: com.vula.app.core.network.VulaApiService,
     private val postRepository: PostRepository,
-    private val storyRepository: com.vula.app.global.data.StoryRepository,
+    private val storyRepository: StoryRepository,
     private val contactSyncManager: ContactSyncManager
 ) : ViewModel() {
+
     private val _stories = MutableStateFlow<List<Story>>(emptyList())
     val stories: StateFlow<List<Story>> = _stories.asStateFlow()
 
     val posts: Flow<PagingData<Post>> = Pager(
-        config = PagingConfig(pageSize = 10, enablePlaceholders = false),
-        pagingSourceFactory = { FeedPagingSource(firestore) }
+        config = PagingConfig(pageSize = Constants.PAGE_SIZE, enablePlaceholders = false),
+        pagingSourceFactory = { FeedPagingSource(api) }
     ).flow.cachedIn(viewModelScope)
 
     val contactMap = contactSyncManager.contactMap
@@ -44,36 +46,23 @@ class FeedViewModel @Inject constructor(
 
     private fun loadStories() {
         viewModelScope.launch {
-            storyRepository.getStories().collect { newStories ->
-                // Filter out duplicates if multiple users posted, or group by user.
-                // For now, we just display them.
-                _stories.value = newStories
-            }
+            storyRepository.getStories().collect { _stories.value = it }
         }
     }
 
     fun likePost(postId: String, currentUserId: String) {
-        viewModelScope.launch {
-            // Double-tap routes through the emoji reaction system with ❤️
-            postRepository.reactToPost(postId, currentUserId, "❤️")
-        }
+        viewModelScope.launch { postRepository.reactToPost(postId, currentUserId, "❤️") }
     }
 
     fun unlikePost(postId: String, currentUserId: String) {
-        viewModelScope.launch {
-            postRepository.removeReaction(postId, currentUserId)
-        }
+        viewModelScope.launch { postRepository.removeReaction(postId, currentUserId) }
     }
 
     fun reactToPost(postId: String, currentUserId: String, emoji: String) {
-        viewModelScope.launch {
-            postRepository.reactToPost(postId, currentUserId, emoji)
-        }
+        viewModelScope.launch { postRepository.reactToPost(postId, currentUserId, emoji) }
     }
 
     fun removeReaction(postId: String, currentUserId: String) {
-        viewModelScope.launch {
-            postRepository.removeReaction(postId, currentUserId)
-        }
+        viewModelScope.launch { postRepository.removeReaction(postId, currentUserId) }
     }
 }

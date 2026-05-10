@@ -1,34 +1,24 @@
 package com.vula.app.local.data
 
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import com.vula.app.core.model.LocalPost
-import com.vula.app.core.util.Constants
-import kotlinx.coroutines.channels.awaitClose
+import com.vula.app.core.network.JoinNetworkBody
+import com.vula.app.core.network.LocalPostBody
+import com.vula.app.core.network.LocalReactBody
+import com.vula.app.core.network.VulaApiService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.flow.flow
 import javax.inject.Inject
 
 class LocalRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val api: VulaApiService
 ) : LocalRepository {
 
     override suspend fun joinNetwork(networkId: String, deviceHash: String, alias: String): Result<Unit> {
         return try {
-            val presenceRef = firestore.collection(Constants.LOCAL_PRESENCE_COLLECTION)
-                .document(networkId)
-                .collection("users")
-                .document(deviceHash)
-
-            presenceRef.set(
-                mapOf(
-                    "alias" to alias,
-                    "lastSeen" to System.currentTimeMillis(),
-                    "joinedAt" to System.currentTimeMillis()
-                )
-            ).await()
-            Result.success(Unit)
+            val response = api.joinNetwork(JoinNetworkBody(networkId, deviceHash, alias))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Join failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -36,100 +26,73 @@ class LocalRepositoryImpl @Inject constructor(
 
     override suspend fun leaveNetwork(networkId: String, deviceHash: String): Result<Unit> {
         return try {
-            firestore.collection(Constants.LOCAL_PRESENCE_COLLECTION)
-                .document(networkId)
-                .collection("users")
-                .document(deviceHash)
-                .delete()
-                .await()
-            Result.success(Unit)
+            val response = api.leaveNetwork(JoinNetworkBody(networkId, deviceHash, alias = ""))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Leave failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override suspend fun postToLocal(networkId: String, deviceHash: String, alias: String, text: String): Result<Unit> {
+    override suspend fun postToLocal(
+        networkId: String,
+        deviceHash: String,
+        alias: String,
+        text: String
+    ): Result<Unit> {
         return try {
-            val postRef = firestore.collection(Constants.LOCAL_POSTS_COLLECTION).document()
-            val now = System.currentTimeMillis()
-            val expiry = now + (Constants.LOCAL_POST_EXPIRY_HOURS * 60 * 60 * 1000)
-
-            val post = LocalPost(
-                id = postRef.id,
-                networkId = networkId,
-                alias = alias,
-                deviceIdHash = deviceHash,
-                text = text,
-                createdAt = now,
-                expiresAt = expiry,
-                reactionsCount = 0
-            )
-
-            postRef.set(post).await()
-            Result.success(Unit)
+            val response = api.postToLocal(LocalPostBody(networkId, deviceHash, alias, text))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Post failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override suspend fun reactToLocalPost(postId: String, deviceHash: String, emoji: String): Result<Unit> {
+    override suspend fun reactToLocalPost(
+        postId: String,
+        deviceHash: String,
+        emoji: String
+    ): Result<Unit> {
         return try {
-            val postRef = firestore.collection(Constants.LOCAL_POSTS_COLLECTION).document(postId)
-            val reactionRef = postRef.collection(Constants.REACTIONS_SUBCOLLECTION).document(deviceHash)
-
-            val existing = reactionRef.get().await()
-            if (!existing.exists()) {
-                firestore.runBatch { batch ->
-                    batch.set(reactionRef, mapOf(
-                        "emoji" to emoji,
-                        "reactedAt" to System.currentTimeMillis()
-                    ))
-                    batch.update(postRef, "reactionsCount",
-                        com.google.firebase.firestore.FieldValue.increment(1))
-                }.await()
-            }
-            Result.success(Unit)
+            val response = api.reactToLocalPost(postId, LocalReactBody(deviceHash, emoji))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("React failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override fun getLocalFeed(networkId: String): Flow<List<LocalPost>> = callbackFlow {
-        val now = System.currentTimeMillis()
-        val query = firestore.collection(Constants.LOCAL_POSTS_COLLECTION)
-            .whereEqualTo("networkId", networkId)
-            .whereGreaterThan("expiresAt", now)
-            .orderBy("expiresAt", Query.Direction.DESCENDING)
-
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            if (snapshot != null) {
-                val posts = snapshot.documents.mapNotNull { it.toObject(LocalPost::class.java) }
-                    .sortedByDescending { it.createdAt }
-                trySend(posts)
-            }
+    override fun getLocalFeed(networkId: String): Flow<List<LocalPost>> = flow {
+        while (true) {
+            try {
+                val response = api.getLocalFeed(networkId)
+                if (response.isSuccessful) {
+                    emit(response.body()?.map {
+                        LocalPost(
+                            id            = it.id,
+                            networkId     = it.networkId,
+                            alias         = it.alias,
+                            deviceIdHash  = it.deviceIdHash,
+                            text          = it.text,
+                            createdAt     = it.createdAt,
+                            expiresAt     = it.expiresAt,
+                            reactionsCount = it.reactionsCount
+                        )
+                    }?.sortedByDescending { it.createdAt } ?: emptyList())
+                }
+            } catch (_: Exception) {}
+            delay(4_000)
         }
-        awaitClose { listener.remove() }
     }
 
-    override fun getPeopleHere(networkId: String): Flow<List<String>> = callbackFlow {
-        val query = firestore.collection(Constants.LOCAL_PRESENCE_COLLECTION)
-            .document(networkId)
-            .collection("users")
-
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            if (snapshot != null) {
-                val aliases = snapshot.documents.mapNotNull { it.getString("alias") }
-                trySend(aliases)
-            }
+    override fun getPeopleHere(networkId: String): Flow<List<String>> = flow {
+        while (true) {
+            try {
+                val response = api.getPeopleHere(networkId)
+                if (response.isSuccessful) emit(response.body() ?: emptyList())
+            } catch (_: Exception) {}
+            delay(6_000)
         }
-        awaitClose { listener.remove() }
     }
 }

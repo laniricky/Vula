@@ -2,9 +2,8 @@ package com.vula.app.global.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.firestore.FirebaseFirestore
 import com.vula.app.core.model.User
-import com.vula.app.core.util.Constants
+import com.vula.app.core.network.VulaApiService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -12,12 +11,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val firestore: FirebaseFirestore
+    private val api: VulaApiService
 ) : ViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -38,19 +36,29 @@ class SearchViewModel @Inject constructor(
             _results.value = emptyList()
             return
         }
-        // 300 ms debounce to avoid hammering Firestore on every keystroke
         searchJob = viewModelScope.launch {
             delay(300)
             _isLoading.value = true
             try {
-                val q = newQuery.trim().lowercase()
-                val snapshot = firestore.collection(Constants.USERS_COLLECTION)
-                    .whereGreaterThanOrEqualTo("username", q)
-                    .whereLessThan("username", q + "\uF8FF")
-                    .limit(25)
-                    .get()
-                    .await()
-                _results.value = snapshot.documents.mapNotNull { it.toObject(User::class.java) }
+                val response = api.searchUsers(query = newQuery.trim().lowercase(), limit = 25)
+                _results.value = if (response.isSuccessful) {
+                    response.body()?.map {
+                        User(
+                            id              = it.id,
+                            username        = it.username,
+                            phoneNumber     = it.phoneNumber,
+                            phoneHash       = "",
+                            displayName     = it.displayName,
+                            bio             = it.bio,
+                            profileImageUrl = it.profileImageUrl,
+                            followersCount  = it.followersCount,
+                            followingCount  = it.followingCount,
+                            postsCount      = it.postsCount,
+                            isOnline        = it.isOnline,
+                            createdAt       = it.createdAt
+                        )
+                    } ?: emptyList()
+                } else emptyList()
             } catch (_: Exception) {
                 _results.value = emptyList()
             } finally {

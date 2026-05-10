@@ -1,161 +1,96 @@
 package com.vula.app.global.data
 
+import android.content.Context
 import android.net.Uri
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.storage.FirebaseStorage
 import com.vula.app.core.model.Comment
 import com.vula.app.core.model.Post
-import com.vula.app.core.model.User
-import com.vula.app.core.util.Constants
-import kotlinx.coroutines.channels.awaitClose
+import com.vula.app.core.network.CommentBody
+import com.vula.app.core.network.ReactBody
+import com.vula.app.core.network.VulaApiService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.tasks.await
-import java.util.UUID
+import kotlinx.coroutines.flow.flow
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 
 class PostRepositoryImpl @Inject constructor(
-    private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage,
-    private val auth: FirebaseAuth
+    private val api: VulaApiService,
+    @ApplicationContext private val context: Context
 ) : PostRepository {
 
-    override fun getGlobalFeed(): Flow<List<Post>> = callbackFlow {
-        val query = firestore.collection(Constants.POSTS_COLLECTION)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .limit(Constants.PAGE_SIZE.toLong())
+    // ── Feed ─────────────────────────────────────────────────────────────────
 
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            if (snapshot != null) {
-                val posts = snapshot.documents.mapNotNull { it.toObject(Post::class.java) }
-                trySend(posts)
-            }
+    override fun getGlobalFeed(): Flow<List<Post>> = flow {
+        val response = api.getFeed()
+        if (response.isSuccessful) {
+            emit(response.body()?.map { it.toPost() } ?: emptyList())
+        } else {
+            emit(emptyList())
         }
-        awaitClose { listener.remove() }
     }
 
-    override fun getUserPosts(userId: String): Flow<List<Post>> = callbackFlow {
-        val query = firestore.collection(Constants.POSTS_COLLECTION)
-            .whereEqualTo("authorId", userId)
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            if (snapshot != null) {
-                val posts = snapshot.documents.mapNotNull { it.toObject(Post::class.java) }
-                trySend(posts)
-            }
+    override fun getUserPosts(userId: String): Flow<List<Post>> = flow {
+        val response = api.getUserPosts(userId)
+        if (response.isSuccessful) {
+            emit(response.body()?.map { it.toPost() } ?: emptyList())
+        } else {
+            emit(emptyList())
         }
-        awaitClose { listener.remove() }
     }
 
-    override suspend fun createPost(caption: String, mediaUri: Uri?, mediaType: String): Result<Unit> {
+    // ── Create ────────────────────────────────────────────────────────────────
+
+    override suspend fun createPost(
+        caption: String,
+        mediaUri: Uri?,
+        mediaType: String
+    ): Result<Unit> {
         return try {
-            val currentUser = auth.currentUser ?: throw Exception("Not authenticated")
-            val userDoc = firestore.collection(Constants.USERS_COLLECTION).document(currentUser.uid).get().await()
-            val user = userDoc.toObject(User::class.java) ?: throw Exception("User not found")
+            val captionBody   = caption.toRequestBody("text/plain".toMediaTypeOrNull())
+            val mediaTypeBody = mediaType.toRequestBody("text/plain".toMediaTypeOrNull())
 
-            var imageUrl: String? = null
-
-            if (mediaUri != null) {
-                val extension = if (mediaType == "video") "mp4" else "jpg"
-                val mediaRef = storage.reference.child("posts/${currentUser.uid}/${UUID.randomUUID()}.$extension")
-                mediaRef.putFile(mediaUri).await()
-                imageUrl = mediaRef.downloadUrl.await().toString()
+            val mediaPart: MultipartBody.Part? = mediaUri?.let { uri ->
+                val inputStream = context.contentResolver.openInputStream(uri)
+                    ?: return Result.failure(Exception("Cannot open media"))
+                val ext  = if (mediaType == "video") "mp4" else "jpg"
+                val file = File(context.cacheDir, "upload_${System.currentTimeMillis()}.$ext")
+                FileOutputStream(file).use { out -> inputStream.copyTo(out) }
+                val requestBody = file.asRequestBody(
+                    (if (mediaType == "video") "video/mp4" else "image/jpeg").toMediaTypeOrNull()
+                )
+                MultipartBody.Part.createFormData("media", file.name, requestBody)
             }
 
-            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document()
-            val post = Post(
-                id = postRef.id,
-                authorId = user.id,
-                authorUsername = user.username,
-                authorProfileImageUrl = user.profileImageUrl,
-                caption = caption,
-                imageUrl = imageUrl,
-                mediaType = mediaType,
-                createdAt = System.currentTimeMillis()
-            )
-
-            postRef.set(post).await()
-            Result.success(Unit)
+            val response = api.createPost(mediaPart, captionBody, mediaTypeBody)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Create post failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override suspend fun likePost(postId: String, userId: String): Result<Unit> {
+    // ── Reactions ─────────────────────────────────────────────────────────────
+
+    override suspend fun likePost(postId: String, userId: String): Result<Unit> =
+        reactToPost(postId, userId, "❤️")
+
+    override suspend fun unlikePost(postId: String, userId: String): Result<Unit> =
+        removeReaction(postId, userId)
+
+    override suspend fun reactToPost(
+        postId: String,
+        userId: String,
+        emoji: String
+    ): Result<Unit> {
         return try {
-            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
-            val likeRef = postRef.collection(Constants.LIKES_SUBCOLLECTION).document(userId)
-
-            // Only like if not already liked (guard read outside batch is acceptable for MVP)
-            val likeDoc = likeRef.get().await()
-            if (!likeDoc.exists()) {
-                firestore.runBatch { batch ->
-                    batch.set(likeRef, mapOf("likedAt" to System.currentTimeMillis()))
-                    batch.update(postRef, "likesCount",
-                        com.google.firebase.firestore.FieldValue.increment(1))
-                    batch.update(postRef, "likedBy",
-                        com.google.firebase.firestore.FieldValue.arrayUnion(userId))
-                }.await()
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun unlikePost(postId: String, userId: String): Result<Unit> {
-        return try {
-            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
-            val likeRef = postRef.collection(Constants.LIKES_SUBCOLLECTION).document(userId)
-
-            val likeDoc = likeRef.get().await()
-            if (likeDoc.exists()) {
-                firestore.runBatch { batch ->
-                    batch.delete(likeRef)
-                    batch.update(postRef, "likesCount",
-                        com.google.firebase.firestore.FieldValue.increment(-1))
-                    batch.update(postRef, "likedBy",
-                        com.google.firebase.firestore.FieldValue.arrayRemove(userId))
-                }.await()
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    override suspend fun reactToPost(postId: String, userId: String, emoji: String): Result<Unit> {
-        return try {
-            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
-            // Read the user's previous reaction so we can manage likesCount properly
-            val snapshot = postRef.get().await()
-            @Suppress("UNCHECKED_CAST")
-            val reactions = snapshot.get("reactions") as? Map<String, String> ?: emptyMap()
-            val hadNoReaction = !reactions.containsKey(userId)
-
-            firestore.runBatch { batch ->
-                // Write the emoji into reactions.<userId>
-                batch.update(postRef, "reactions.$userId", emoji)
-                // Also keep likedBy / likesCount in sync for backward compat
-                if (hadNoReaction) {
-                    batch.update(postRef, "likesCount",
-                        com.google.firebase.firestore.FieldValue.increment(1))
-                    batch.update(postRef, "likedBy",
-                        com.google.firebase.firestore.FieldValue.arrayUnion(userId))
-                }
-            }.await()
-            Result.success(Unit)
+            val response = api.reactToPost(postId, ReactBody(emoji))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("React failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -163,66 +98,57 @@ class PostRepositoryImpl @Inject constructor(
 
     override suspend fun removeReaction(postId: String, userId: String): Result<Unit> {
         return try {
-            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
-            firestore.runBatch { batch ->
-                batch.update(postRef, "reactions.$userId",
-                    com.google.firebase.firestore.FieldValue.delete())
-                batch.update(postRef, "likesCount",
-                    com.google.firebase.firestore.FieldValue.increment(-1))
-                batch.update(postRef, "likedBy",
-                    com.google.firebase.firestore.FieldValue.arrayRemove(userId))
-            }.await()
-            Result.success(Unit)
+            val response = api.removeReaction(postId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Remove reaction failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    // ── Comments ──────────────────────────────────────────────────────────────
 
     override suspend fun addComment(postId: String, text: String): Result<Unit> {
         return try {
-            val currentUser = auth.currentUser ?: throw Exception("Not authenticated")
-            val userDoc = firestore.collection(Constants.USERS_COLLECTION).document(currentUser.uid).get().await()
-            val user = userDoc.toObject(User::class.java) ?: throw Exception("User not found")
-
-            val postRef = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
-            val commentRef = postRef.collection(Constants.COMMENTS_SUBCOLLECTION).document()
-
-            val comment = Comment(
-                id = commentRef.id,
-                authorId = user.id,
-                authorUsername = user.username,
-                text = text,
-                createdAt = System.currentTimeMillis()
-            )
-
-            firestore.runTransaction { transaction ->
-                transaction.set(commentRef, comment)
-                val postSnapshot = transaction.get(postRef)
-                val currentComments = postSnapshot.getLong("commentsCount") ?: 0
-                transaction.update(postRef, "commentsCount", currentComments + 1)
-            }.await()
-            
-            Result.success(Unit)
+            val response = api.addComment(postId, CommentBody(text))
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Comment failed: ${response.code()}"))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    override fun getComments(postId: String): Flow<List<Comment>> = callbackFlow {
-        val query = firestore.collection(Constants.POSTS_COLLECTION).document(postId)
-            .collection(Constants.COMMENTS_SUBCOLLECTION)
-            .orderBy("createdAt", Query.Direction.ASCENDING)
-
-        val listener = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                close(error)
-                return@addSnapshotListener
-            }
-            if (snapshot != null) {
-                val comments = snapshot.documents.mapNotNull { it.toObject(Comment::class.java) }
-                trySend(comments)
-            }
+    override fun getComments(postId: String): Flow<List<Comment>> = flow {
+        val response = api.getComments(postId)
+        if (response.isSuccessful) {
+            emit(response.body()?.map {
+                Comment(
+                    id             = it.id,
+                    authorId       = it.authorId,
+                    authorUsername = it.authorUsername,
+                    text           = it.text,
+                    createdAt      = it.createdAt
+                )
+            } ?: emptyList())
+        } else {
+            emit(emptyList())
         }
-        awaitClose { listener.remove() }
     }
 }
+
+// ── Extension ─────────────────────────────────────────────────────────────────
+
+private fun com.vula.app.core.network.ApiPost.toPost() = Post(
+    id                    = id,
+    authorId              = authorId,
+    authorUsername        = authorUsername,
+    authorProfileImageUrl = authorProfileImageUrl,
+    caption               = caption,
+    imageUrl              = imageUrl,
+    mediaType             = mediaType,
+    likesCount            = likesCount,
+    commentsCount         = commentsCount,
+    createdAt             = createdAt,
+    likedBy               = likedBy,
+    reactions             = reactions
+)

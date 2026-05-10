@@ -5,6 +5,7 @@ data class Message(
     val senderId: String = "",
     val senderUsername: String = "",
     val text: String = "",
+    val voiceUrl: String? = null,
     val createdAt: Long = 0L,
     val readBy: List<String> = emptyList()
 )

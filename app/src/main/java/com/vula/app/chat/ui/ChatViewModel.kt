@@ -2,11 +2,12 @@ package com.vula.app.chat.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.auth.FirebaseAuth
 import com.vula.app.chat.data.ChatRepository
+import com.vula.app.core.data.SessionManager
 import com.vula.app.core.model.ChatRoom
 import com.vula.app.core.model.Message
 import com.vula.app.core.model.MessageRequest
+import com.vula.app.core.network.VulaApiService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -17,22 +18,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import com.google.firebase.firestore.FirebaseFirestore
-import com.vula.app.core.util.Constants
-import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 @HiltViewModel
 class ChatViewModel @Inject constructor(
     private val chatRepository: ChatRepository,
-    private val auth: FirebaseAuth,
-    private val firestore: FirebaseFirestore
+    private val api: VulaApiService,
+    private val sessionManager: SessionManager
 ) : ViewModel() {
 
     private val _roomsState = MutableStateFlow<List<ChatRoom>>(emptyList())
     val roomsState: StateFlow<List<ChatRoom>> = _roomsState.asStateFlow()
-    
-    // Map of roomId -> Other User's Name
+
     private val _roomNames = MutableStateFlow<Map<String, String>>(emptyMap())
     val roomNames: StateFlow<Map<String, String>> = _roomNames.asStateFlow()
 
@@ -48,18 +45,22 @@ class ChatViewModel @Inject constructor(
     private var typingJob: Job? = null
     private var isTypingLocally = false
 
-    /** Count of chat rooms with unread messages + pending incoming requests */
     val unreadCount: StateFlow<Int> = combine(_roomsState, _incomingRequests) { rooms, requests ->
         val uid = currentUserId ?: return@combine 0
-        val unreadRooms = rooms.count { room -> room.unreadFor.contains(uid) }
-        unreadRooms + requests.size
+        rooms.count { it.unreadFor.contains(uid) } + requests.size
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
-    val currentUserId: String? get() = auth.currentUser?.uid
+    val currentUserId: String?
+        get() = _cachedUserId
+
+    private var _cachedUserId: String? = null
 
     init {
-        loadChatRooms()
-        loadIncomingRequests()
+        viewModelScope.launch {
+            _cachedUserId = sessionManager.getUserIdNow()
+            loadChatRooms()
+            loadIncomingRequests()
+        }
     }
 
     private fun loadChatRooms() {
@@ -70,47 +71,40 @@ class ChatViewModel @Inject constructor(
             }
         }
     }
-    
+
     private suspend fun resolveRoomNames(rooms: List<ChatRoom>) {
-        val uid = currentUserId ?: return
+        val uid          = currentUserId ?: return
         val currentNames = _roomNames.value.toMutableMap()
-        var changed = false
-        
+        var changed      = false
+
         for (room in rooms) {
             if (room.type == "direct") {
                 val otherId = room.participants.firstOrNull { it != uid }
                 if (otherId != null && !currentNames.containsKey(room.id)) {
                     try {
-                        val doc = firestore.collection(Constants.USERS_COLLECTION).document(otherId).get().await()
-                        val username = doc.getString("username")
+                        val response = api.getUser(otherId)
+                        val username = response.body()?.username
                         if (username != null) {
                             currentNames[room.id] = username
                             changed = true
                         }
-                    } catch (e: Exception) {
-                        // ignore error, keep defaulting to "Chat"
-                    }
+                    } catch (_: Exception) {}
                 }
             }
         }
-        if (changed) {
-            _roomNames.value = currentNames
-        }
+        if (changed) _roomNames.value = currentNames
     }
 
     private fun loadIncomingRequests() {
         viewModelScope.launch {
-            chatRepository.getIncomingRequests().collect { requests ->
-                _incomingRequests.value = requests
-            }
+            chatRepository.getIncomingRequests().collect { _incomingRequests.value = it }
         }
     }
 
     fun loadMessages(chatRoomId: String) {
         viewModelScope.launch {
             chatRepository.markRoomRead(chatRoomId)
-            
-            // Observe the room itself for typing indicators
+
             launch {
                 chatRepository.getChatRooms().collect { rooms ->
                     _currentRoom.value = rooms.find { it.id == chatRoomId }
@@ -121,8 +115,8 @@ class ChatViewModel @Inject constructor(
                 _messagesState.value = msgs
                 val uid = currentUserId
                 if (uid != null) {
-                    msgs.filter { !it.readBy.contains(uid) }.forEach { unreadMsg ->
-                        chatRepository.markMessageRead(chatRoomId, unreadMsg.id)
+                    msgs.filter { !it.readBy.contains(uid) }.forEach {
+                        chatRepository.markMessageRead(chatRoomId, it.id)
                     }
                 }
             }
@@ -136,7 +130,7 @@ class ChatViewModel @Inject constructor(
         }
         typingJob?.cancel()
         typingJob = viewModelScope.launch {
-            delay(3000) // Clear typing status after 3 seconds of inactivity
+            delay(3_000)
             isTypingLocally = false
             chatRepository.setTypingStatus(chatRoomId, false)
         }
@@ -144,48 +138,33 @@ class ChatViewModel @Inject constructor(
 
     fun sendMessage(chatRoomId: String, text: String) {
         if (text.isBlank()) return
-        
-        // Immediately clear typing status
         typingJob?.cancel()
         if (isTypingLocally) {
             isTypingLocally = false
             viewModelScope.launch { chatRepository.setTypingStatus(chatRoomId, false) }
         }
-
-        viewModelScope.launch {
-            chatRepository.sendMessage(chatRoomId, text.trim())
-        }
+        viewModelScope.launch { chatRepository.sendMessage(chatRoomId, text.trim()) }
     }
 
     fun createDirectChat(otherUserId: String, onResult: (String?) -> Unit) {
         viewModelScope.launch {
-            val result = chatRepository.createDirectChat(otherUserId)
-            onResult(result.getOrNull())
+            onResult(chatRepository.createDirectChat(otherUserId).getOrNull())
         }
     }
 
-    fun sendMessageRequest(
-        toUserId: String,
-        toUsername: String,
-        toProfileImageUrl: String?,
-        onResult: (Boolean) -> Unit
-    ) {
+    fun sendMessageRequest(toUserId: String, toUsername: String, toProfileImageUrl: String?, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            val result = chatRepository.sendMessageRequest(toUserId, toUsername, toProfileImageUrl)
-            onResult(result.isSuccess)
+            onResult(chatRepository.sendMessageRequest(toUserId, toUsername, toProfileImageUrl).isSuccess)
         }
     }
 
     fun acceptRequest(requestId: String, fromUserId: String, onResult: (String?) -> Unit) {
         viewModelScope.launch {
-            val result = chatRepository.acceptMessageRequest(requestId, fromUserId)
-            onResult(result.getOrNull())
+            onResult(chatRepository.acceptMessageRequest(requestId, fromUserId).getOrNull())
         }
     }
 
     fun declineRequest(requestId: String) {
-        viewModelScope.launch {
-            chatRepository.declineMessageRequest(requestId)
-        }
+        viewModelScope.launch { chatRepository.declineMessageRequest(requestId) }
     }
 }

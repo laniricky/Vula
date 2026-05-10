@@ -53,13 +53,10 @@
             </intent-filter>
         </activity>
 
+        <!-- Push service placeholder — will be connected to Go backend push delivery -->
         <service
-            android:name=".core.service.MyFirebaseMessagingService"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
-            </intent-filter>
-        </service>
+            android:name=".core.service.VulaPushService"
+            android:exported="false" />
     </application>
 
 </manifest>

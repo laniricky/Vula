@@ -2,44 +2,52 @@ package com.vula.app.global.data
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.QuerySnapshot
 import com.vula.app.core.model.Post
+import com.vula.app.core.network.ApiPost
+import com.vula.app.core.network.VulaApiService
 import com.vula.app.core.util.Constants
-import kotlinx.coroutines.tasks.await
 
 class FeedPagingSource(
-    private val firestore: FirebaseFirestore
-) : PagingSource<QuerySnapshot, Post>() {
+    private val api: VulaApiService
+) : PagingSource<Int, Post>() {
 
-    override fun getRefreshKey(state: PagingState<QuerySnapshot, Post>): QuerySnapshot? {
-        return null
+    override fun getRefreshKey(state: PagingState<Int, Post>): Int? {
+        return state.anchorPosition?.let { anchor ->
+            state.closestPageToPosition(anchor)?.prevKey?.plus(1)
+                ?: state.closestPageToPosition(anchor)?.nextKey?.minus(1)
+        }
     }
 
-    override suspend fun load(params: LoadParams<QuerySnapshot>): LoadResult<QuerySnapshot, Post> {
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Post> {
+        val page = params.key ?: 1
         return try {
-            val query = firestore.collection(Constants.POSTS_COLLECTION)
-                .orderBy("createdAt", Query.Direction.DESCENDING)
-                .limit(params.loadSize.toLong())
-
-            val currentPage = params.key ?: query.get().await()
-            val posts = currentPage.toObjects(Post::class.java)
-
-            val nextPage = if (currentPage.size() > 0 && currentPage.size() == params.loadSize) {
-                val lastVisibleProduct = currentPage.documents[currentPage.size() - 1]
-                query.startAfter(lastVisibleProduct).get().await()
-            } else {
-                null
+            val response = api.getFeed(page = page, limit = Constants.PAGE_SIZE)
+            if (!response.isSuccessful) {
+                return LoadResult.Error(Exception("Feed error: ${response.code()}"))
             }
-
+            val posts = response.body()?.map { it.toPost() } ?: emptyList()
             LoadResult.Page(
-                data = posts,
-                prevKey = null, // Only paging forward
-                nextKey = nextPage
+                data     = posts,
+                prevKey  = if (page == 1) null else page - 1,
+                nextKey  = if (posts.size < Constants.PAGE_SIZE) null else page + 1
             )
         } catch (e: Exception) {
             LoadResult.Error(e)
         }
     }
+
+    private fun ApiPost.toPost() = Post(
+        id                    = id,
+        authorId              = authorId,
+        authorUsername        = authorUsername,
+        authorProfileImageUrl = authorProfileImageUrl,
+        caption               = caption,
+        imageUrl              = imageUrl,
+        mediaType             = mediaType,
+        likesCount            = likesCount,
+        commentsCount         = commentsCount,
+        createdAt             = createdAt,
+        likedBy               = likedBy,
+        reactions             = reactions
+    )
 }

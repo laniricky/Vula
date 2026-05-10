@@ -10,12 +10,10 @@ import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
+import com.vula.app.core.data.SessionManager
 import com.vula.app.core.model.Post
 import com.vula.app.core.model.User
-import com.vula.app.core.util.Constants
+import com.vula.app.core.network.VulaApiService
 import com.vula.app.global.data.FollowRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -26,19 +24,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 
 // ── Filter chip enum ──────────────────────────────────────────────────────────
 
 enum class DiscoverFilter(val label: String, val icon: ImageVector) {
     TRENDING("Trending", Icons.Default.Whatshot),
-    PEOPLE("People", Icons.Default.Group),
-    CLIPS("Clips", Icons.Default.Videocam),
-    NEW("New", Icons.Default.AutoAwesome),
+    PEOPLE("People",    Icons.Default.Group),
+    CLIPS("Clips",      Icons.Default.Videocam),
+    NEW("New",          Icons.Default.AutoAwesome),
 }
 
-// ── Trending topic model ───────────────────────────────────────────────────────
+// ── Models ────────────────────────────────────────────────────────────────────
 
 data class TrendingTopic(
     val hashtag: String,
@@ -46,98 +43,92 @@ data class TrendingTopic(
     val coverImageUrl: String?
 )
 
-// ── Suggested user model (mutualCount removed — was fake) ─────────────────────
-
 data class SuggestedUser(
     val user: User,
     val isFollowing: Boolean
 )
 
-// ── Search result — users AND hashtags ────────────────────────────────────────
-
 sealed class SearchResult {
-    data class UserResult(val user: User) : SearchResult()
+    data class UserResult(val user: User)              : SearchResult()
     data class HashtagResult(val hashtag: String, val postCount: Int) : SearchResult()
 }
 
-// ── UI state ─────────────────────────────────────────────────────────────────
+// ── UI State ──────────────────────────────────────────────────────────────────
 
 sealed class DiscoverUiState {
     object Loading : DiscoverUiState()
     data class Success(
-        val explorePosts: List<Post>,
+        val explorePosts:   List<Post>,
         val trendingTopics: List<TrendingTopic>,
         val suggestedUsers: List<SuggestedUser>,
-        /** True while we haven't fetched fewer items than the page limit. */
-        val hasMorePages: Boolean = true
+        val hasMorePages:   Boolean = true
     ) : DiscoverUiState()
     data class Error(val message: String) : DiscoverUiState()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-private const val PREFS_NAME      = "discover_prefs"
-private const val KEY_RECENT      = "recent_searches"
-private const val SEPARATOR       = "|||"
-private const val EXPLORE_LIMIT   = 40L
-private const val CLIPS_LIMIT     = 30L
+private const val PREFS_NAME    = "discover_prefs"
+private const val KEY_RECENT    = "recent_searches"
+private const val SEPARATOR     = "|||"
+private const val EXPLORE_LIMIT = 40
+private const val CLIPS_LIMIT   = 30
 
 @HiltViewModel
 class DiscoverViewModel @Inject constructor(
-    private val firestore: FirebaseFirestore,
-    private val auth: FirebaseAuth,
+    private val api: VulaApiService,
     private val followRepository: FollowRepository,
+    private val sessionManager: SessionManager,
     @ApplicationContext private val appContext: Context
 ) : ViewModel() {
 
     private val prefs: SharedPreferences =
         appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    private val currentUid get() = auth.currentUser?.uid ?: ""
+    private var currentUid: String = ""
 
     // ── Explore grid ──────────────────────────────────────────────────────────
     private val _uiState = MutableStateFlow<DiscoverUiState>(DiscoverUiState.Loading)
     val uiState: StateFlow<DiscoverUiState> = _uiState.asStateFlow()
 
-    // ── Active filter chip ────────────────────────────────────────────────────
     private val _activeFilter = MutableStateFlow(DiscoverFilter.TRENDING)
     val activeFilter: StateFlow<DiscoverFilter> = _activeFilter.asStateFlow()
 
-    // ── Selected trending topic (null = no topic filter) ─────────────────────
     private val _selectedTopic = MutableStateFlow<TrendingTopic?>(null)
     val selectedTopic: StateFlow<TrendingTopic?> = _selectedTopic.asStateFlow()
 
     // ── Search ────────────────────────────────────────────────────────────────
-    private val _searchQuery = MutableStateFlow("")
+    private val _searchQuery    = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _searchResults = MutableStateFlow<List<SearchResult>>(emptyList())
+    private val _searchResults  = MutableStateFlow<List<SearchResult>>(emptyList())
     val searchResults: StateFlow<List<SearchResult>> = _searchResults.asStateFlow()
 
-    private val _isSearching = MutableStateFlow(false)
+    private val _isSearching    = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
     private val _isSearchActive = MutableStateFlow(false)
     val isSearchActive: StateFlow<Boolean> = _isSearchActive.asStateFlow()
 
-    // ── Recent searches — persisted to SharedPreferences ─────────────────────
     private val _recentSearches = MutableStateFlow<List<String>>(loadRecentSearches())
     val recentSearches: StateFlow<List<String>> = _recentSearches.asStateFlow()
 
-    // ── Follow state cache (userId → following) ───────────────────────────────
     private val _followingState = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val followingState: StateFlow<Map<String, Boolean>> = _followingState.asStateFlow()
 
     private var searchJob: Job? = null
 
     init {
-        loadDiscover()
+        viewModelScope.launch {
+            currentUid = sessionManager.getUserIdNow() ?: ""
+            loadDiscover()
+        }
     }
 
-    // ─── Public API ────────────────────────────────────────────────────────────
+    // ── Public API ────────────────────────────────────────────────────────────
 
     fun setFilter(filter: DiscoverFilter) {
-        _activeFilter.value = filter
+        _activeFilter.value  = filter
         _selectedTopic.value = null
         loadDiscover()
     }
@@ -168,60 +159,47 @@ class DiscoverViewModel @Inject constructor(
                 val isAtUser   = query.trim().startsWith("@")
                 val cleanQuery = query.trim().lowercase().removePrefix("#").removePrefix("@")
 
-                // ── Run both lookups in parallel ───────────────────────────
+                // Run both lookups in parallel
                 val usersDeferred = async {
                     runCatching {
-                        firestore.collection(Constants.USERS_COLLECTION)
-                            .whereGreaterThanOrEqualTo("username", cleanQuery)
-                            .whereLessThan("username", cleanQuery + "\uF8FF")
-                            .limit(15)
-                            .get().await()
-                            .documents.mapNotNull { it.toObject(User::class.java) }
+                        api.searchUsers(query = cleanQuery, limit = 15).body() ?: emptyList()
                     }.getOrElse { emptyList() }
                 }
 
-                val tagsDeferred = async {
-                    // Skip hashtag lookup when the user is clearly searching for a person
-                    if (isAtUser) return@async emptyMap<String, Int>()
+                val postsDeferred = async {
+                    if (isAtUser) return@async emptyList()
                     runCatching {
-                        firestore.collection(Constants.POSTS_COLLECTION)
-                            .whereGreaterThanOrEqualTo("caption", "#$cleanQuery")
-                            .whereLessThan("caption", "#$cleanQuery\uF8FF")
-                            .limit(30)
-                            .get().await()
-                            .documents.mapNotNull { it.toObject(Post::class.java) }
-                    }.getOrElse { emptyList<Post>() }
-                        .flatMap { post ->
-                            Regex("#(\\w+)").findAll(post.caption)
-                                .map { it.groupValues[1].lowercase() }
-                                .filter { it.startsWith(cleanQuery) }
-                                .toList()
-                        }
-                        .groupingBy { it }
-                        .eachCount()
+                        api.getExplorePosts(filter = "new", limit = 50).body() ?: emptyList()
+                    }.getOrElse { emptyList() }
                 }
 
-                val users    = usersDeferred.await()
-                val tagCounts = tagsDeferred.await()
+                val apiUsers = usersDeferred.await()
+                val apiPosts = postsDeferred.await()
+
+                // Build hashtag counts from captions
+                val tagCounts = apiPosts
+                    .flatMap { post ->
+                        Regex("#(\\w+)").findAll(post.caption)
+                            .map { it.groupValues[1].lowercase() }
+                            .filter { it.startsWith(cleanQuery) }
+                            .toList()
+                    }
+                    .groupingBy { it }
+                    .eachCount()
 
                 val results = mutableListOf<SearchResult>()
-
-                // People section (skip if this is a pure hashtag query)
                 if (!isHashtag) {
-                    users.forEach { results.add(SearchResult.UserResult(it)) }
+                    apiUsers.forEach { u ->
+                        results.add(SearchResult.UserResult(u.toUser()))
+                    }
                 }
-
-                // Tags section
                 tagCounts.entries
                     .sortedByDescending { it.value }
                     .take(8)
-                    .forEach { (tag, count) ->
-                        results.add(SearchResult.HashtagResult(tag, count))
-                    }
+                    .forEach { (tag, count) -> results.add(SearchResult.HashtagResult(tag, count)) }
 
-                // If it was a hashtag query but nothing matched — fall back to users
                 if (isHashtag && tagCounts.isEmpty()) {
-                    users.forEach { results.add(SearchResult.UserResult(it)) }
+                    apiUsers.forEach { results.add(SearchResult.UserResult(it.toUser())) }
                 }
 
                 _searchResults.value = results
@@ -233,8 +211,7 @@ class DiscoverViewModel @Inject constructor(
 
     fun addRecentSearch(term: String) {
         val updated = _recentSearches.value.toMutableList()
-            .also { it.remove(term); it.add(0, term) }
-            .take(6)
+            .also { it.remove(term); it.add(0, term) }.take(6)
         _recentSearches.value = updated
         saveRecentSearches(updated)
     }
@@ -246,36 +223,69 @@ class DiscoverViewModel @Inject constructor(
 
     fun toggleFollow(targetUserId: String) {
         val currentlyFollowing = _followingState.value[targetUserId] == true
-        _followingState.value = _followingState.value.toMutableMap().also {
-            it[targetUserId] = !currentlyFollowing
-        }
+        _followingState.value = _followingState.value.toMutableMap()
+            .also { it[targetUserId] = !currentlyFollowing }
         viewModelScope.launch {
             if (currentlyFollowing) followRepository.unfollowUser(targetUserId, currentUid)
             else                    followRepository.followUser(targetUserId, currentUid)
         }
     }
 
-    fun refresh() { loadDiscover() }
+    fun refresh() = loadDiscover()
 
-    // ─── Private loaders ───────────────────────────────────────────────────────
+    // ── Private loaders ───────────────────────────────────────────────────────
 
     private fun loadDiscover() {
         viewModelScope.launch {
             _uiState.value = DiscoverUiState.Loading
             try {
-                val posts    = fetchExplorePosts()
-                val trending = buildTrendingTopics(posts)
-                val people   = fetchSuggestedUsers()
+                val filter = when (_activeFilter.value) {
+                    DiscoverFilter.TRENDING -> "trending"
+                    DiscoverFilter.NEW      -> "new"
+                    DiscoverFilter.CLIPS    -> "clips"
+                    DiscoverFilter.PEOPLE   -> "new"
+                }
+                val limit = if (_activeFilter.value == DiscoverFilter.CLIPS) CLIPS_LIMIT else EXPLORE_LIMIT
 
-                val limit = if (_activeFilter.value == DiscoverFilter.CLIPS) CLIPS_LIMIT
-                            else EXPLORE_LIMIT
+                val postsDeferred   = async { api.getExplorePosts(filter, limit).body() ?: emptyList() }
+                val peopleDeferred  = async { api.getSuggestedUsers(15).body() ?: emptyList() }
+
+                var apiPosts = postsDeferred.await()
+                val apiPeople = peopleDeferred.await()
+
+                // Apply topic filter in-memory
+                _selectedTopic.value?.let { topic ->
+                    apiPosts = apiPosts.filter {
+                        it.caption.contains("#${topic.hashtag}", ignoreCase = true)
+                    }
+                }
+
+                // Exclude own posts
+                val posts = apiPosts
+                    .filter { it.authorId != currentUid }
+                    .map { it.toPost() }
+
+                val trending = buildTrendingTopics(posts)
+
+                // Fetch follow status for suggested users
+                val followMap = mutableMapOf<String, Boolean>()
+                apiPeople.filter { it.id != currentUid }.take(10).forEach { u ->
+                    val status = runCatching { api.getFollowStatus(u.id).body()?.isFollowing == true }
+                        .getOrElse { false }
+                    followMap[u.id] = status
+                }
+                _followingState.value = followMap
+
+                val suggestedUsers = apiPeople
+                    .filter { it.id != currentUid }
+                    .take(10)
+                    .map { SuggestedUser(it.toUser(), followMap[it.id] == true) }
 
                 _uiState.value = DiscoverUiState.Success(
                     explorePosts   = posts,
                     trendingTopics = trending,
-                    suggestedUsers = people,
-                    // Only false when the server returned fewer items than we asked for
-                    hasMorePages   = posts.size.toLong() >= limit
+                    suggestedUsers = suggestedUsers,
+                    hasMorePages   = apiPosts.size >= limit
                 )
             } catch (e: Exception) {
                 _uiState.value = DiscoverUiState.Error(e.message ?: "Unknown error")
@@ -283,55 +293,10 @@ class DiscoverViewModel @Inject constructor(
         }
     }
 
-    private suspend fun fetchExplorePosts(): List<Post> {
-        val limit = if (_activeFilter.value == DiscoverFilter.CLIPS) CLIPS_LIMIT
-                    else EXPLORE_LIMIT
-
-        val baseQuery: Query = when (_activeFilter.value) {
-            DiscoverFilter.TRENDING ->
-                firestore.collection(Constants.POSTS_COLLECTION)
-                    .orderBy("likesCount", Query.Direction.DESCENDING)
-                    .limit(limit)
-
-            DiscoverFilter.NEW ->
-                firestore.collection(Constants.POSTS_COLLECTION)
-                    .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(limit)
-
-            DiscoverFilter.CLIPS ->
-                // No orderBy to avoid missing composite index; sorted in-memory below
-                firestore.collection(Constants.POSTS_COLLECTION)
-                    .whereEqualTo("mediaType", "video")
-                    .limit(limit)
-
-            DiscoverFilter.PEOPLE ->
-                // People tab shows image posts as a visual backdrop; people cards are primary
-                firestore.collection(Constants.POSTS_COLLECTION)
-                    .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(limit)
-        }
-
-        val snapshot = baseQuery.get().await()
-        var posts = snapshot.documents.mapNotNull { it.toObject(Post::class.java) }
-
-        if (_activeFilter.value == DiscoverFilter.CLIPS) {
-            posts = posts.sortedByDescending { it.createdAt }
-        }
-
-        _selectedTopic.value?.let { topic ->
-            posts = posts.filter {
-                it.caption.contains("#${topic.hashtag}", ignoreCase = true)
-            }
-        }
-
-        return posts.filter { it.authorId != currentUid }
-    }
-
     private fun buildTrendingTopics(posts: List<Post>): List<TrendingTopic> {
         val hashtagRegex = Regex("#(\\w+)")
         val tagCounts    = mutableMapOf<String, Int>()
         val tagCover     = mutableMapOf<String, String?>()
-
         posts.forEach { post ->
             hashtagRegex.findAll(post.caption).forEach { match ->
                 val tag = match.groupValues[1].lowercase()
@@ -339,53 +304,50 @@ class DiscoverViewModel @Inject constructor(
                 if (!tagCover.containsKey(tag)) tagCover[tag] = post.imageUrl
             }
         }
-
         return tagCounts.entries
             .sortedByDescending { it.value }
             .take(8)
-            .map { (tag, count) ->
-                TrendingTopic(hashtag = tag, postCount = count, coverImageUrl = tagCover[tag])
-            }
+            .map { (tag, count) -> TrendingTopic(tag, count, tagCover[tag]) }
     }
 
-    private suspend fun fetchSuggestedUsers(): List<SuggestedUser> {
-        return try {
-            val snapshot = firestore.collection(Constants.USERS_COLLECTION)
-                .orderBy("followersCount", Query.Direction.DESCENDING)
-                .limit(15)
-                .get().await()
+    // ── Mappers ───────────────────────────────────────────────────────────────
 
-            val users = snapshot.documents
-                .mapNotNull { it.toObject(User::class.java) }
-                .filter { it.id != currentUid }
-                .take(10)
+    private fun com.vula.app.core.network.ApiUser.toUser() = User(
+        id              = id,
+        username        = username,
+        phoneNumber     = phoneNumber,
+        phoneHash       = "",
+        displayName     = displayName,
+        bio             = bio,
+        profileImageUrl = profileImageUrl,
+        richStatus      = richStatus,
+        followersCount  = followersCount,
+        followingCount  = followingCount,
+        postsCount      = postsCount,
+        isOnline        = isOnline,
+        createdAt       = createdAt
+    )
 
-            val followMap = mutableMapOf<String, Boolean>()
-            users.forEach { user ->
-                val doc = firestore.collection(Constants.USERS_COLLECTION)
-                    .document(currentUid)
-                    .collection(Constants.FOLLOWING_SUBCOLLECTION)
-                    .document(user.id)
-                    .get().await()
-                followMap[user.id] = doc.exists()
-            }
-            _followingState.value = followMap
+    private fun com.vula.app.core.network.ApiPost.toPost() = Post(
+        id                    = id,
+        authorId              = authorId,
+        authorUsername        = authorUsername,
+        authorProfileImageUrl = authorProfileImageUrl,
+        caption               = caption,
+        imageUrl              = imageUrl,
+        mediaType             = mediaType,
+        likesCount            = likesCount,
+        commentsCount         = commentsCount,
+        createdAt             = createdAt,
+        likedBy               = likedBy,
+        reactions             = reactions
+    )
 
-            users.map { user ->
-                SuggestedUser(user = user, isFollowing = followMap[user.id] == true)
-            }
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    // ─── SharedPreferences helpers ─────────────────────────────────────────────
+    // ── SharedPreferences helpers ─────────────────────────────────────────────
 
     private fun loadRecentSearches(): List<String> =
         prefs.getString(KEY_RECENT, null)
-            ?.split(SEPARATOR)
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
+            ?.split(SEPARATOR)?.filter { it.isNotBlank() } ?: emptyList()
 
     private fun saveRecentSearches(searches: List<String>) {
         prefs.edit().putString(KEY_RECENT, searches.joinToString(SEPARATOR)).apply()
