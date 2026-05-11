@@ -145,6 +145,7 @@ private fun com.vula.app.core.network.ApiPost.toPost() = Post(
     authorProfileImageUrl = authorProfileImageUrl,
     caption               = caption,
     imageUrl              = imageUrl,
+    videoUrl              = videoUrl,
     mediaType             = mediaType,
     likesCount            = likesCount,
     commentsCount         = commentsCount,

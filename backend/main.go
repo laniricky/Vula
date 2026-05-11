@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -83,8 +84,26 @@ func initMinio() {
 	log.Println("Connected to MinIO")
 	for _, b := range []string{"profiles", "posts", "stories", "chat-media", "voice"} {
 		exists, _ := minioC.BucketExists(ctx, b)
-		if !exists { minioC.MakeBucket(ctx, b, minio.MakeBucketOptions{}) }
+		if !exists {
+			minioC.MakeBucket(ctx, b, minio.MakeBucketOptions{})
+			// Make bucket public-readable
+			policy := `{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::` + b + `/*"]}]}`
+			minioC.SetBucketPolicy(ctx, b, policy)
+		}
 	}
+}
+
+// saveToMinio uploads bytes to a MinIO bucket and returns the public URL.
+func saveToMinio(bucket, objectName, contentType string, data []byte) (string, error) {
+	if minioC == nil { return "", fmt.Errorf("minio not configured") }
+	_, err := minioC.PutObject(ctx, bucket, objectName, bytes.NewReader(data), int64(len(data)),
+		minio.PutObjectOptions{ContentType: contentType})
+	if err != nil { return "", err }
+	endpoint := os.Getenv("MINIO_ENDPOINT")
+	if endpoint == "" { endpoint = "minio:9000" }
+	publicHost := os.Getenv("MINIO_PUBLIC_HOST")
+	if publicHost == "" { publicHost = "http://" + endpoint }
+	return publicHost + "/" + bucket + "/" + objectName, nil
 }
 
 // ── JWT helpers (mock — replace with real JWT in production) ──────────────────
@@ -222,21 +241,32 @@ func main() {
 
 	api.Put("/users/me", func(c *fiber.Ctx) error {
 		var req struct {
-			DisplayName string `json:"displayName"`
-			Username    string `json:"username"`
-			Bio         string `json:"bio"`
-			RichStatus  string `json:"richStatus"`
-			Website     string `json:"website"`
-			IsPrivate   bool   `json:"isPrivate"`
+			DisplayName     string `json:"displayName"`
+			Username        string `json:"username"`
+			Bio             string `json:"bio"`
+			RichStatus      string `json:"richStatus"`
+			Website         string `json:"website"`
+			IsPrivate       bool   `json:"isPrivate"`
+			ProfileImageUrl string `json:"profileImageUrl"`
+			BannerUrl       string `json:"bannerUrl"`
 		}
 		c.BodyParser(&req)
 		uid := currentUID(c)
-		db.Model(&User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+		
+		updates := map[string]interface{}{
 			"username":     req.Username,
 			"bio":          req.Bio,
 			"rich_status":  req.RichStatus,
 			"display_name": req.DisplayName,
-		})
+		}
+		if req.ProfileImageUrl != "" {
+			updates["profile_image_url"] = req.ProfileImageUrl
+		}
+		if req.BannerUrl != "" {
+			updates["banner_url"] = req.BannerUrl
+		}
+		
+		db.Model(&User{}).Where("id = ?", uid).Updates(updates)
 		var u User; db.First(&u, "id = ?", uid)
 		return c.JSON(userToMap(u))
 	})
@@ -319,29 +349,64 @@ func main() {
 		return c.JSON(postsToSlice(posts))
 	})
 
-	// JSON-only post creation (for seed script — no file upload)
+	// Post creation: handles both JSON (seed) and multipart (app camera upload)
 	api.Post("/posts", func(c *fiber.Ctx) error {
-		var req struct {
-			Caption   string `json:"caption"`
-			MediaType string `json:"mediaType"`
-			ImageURL  string `json:"imageUrl"`
-			VideoURL  string `json:"videoUrl"`
-		}
-		c.BodyParser(&req)
 		uid := currentUID(c)
 		var author User; db.First(&author, "id = ?", uid)
+
+		var caption, mediaType, imageURL, videoURL string
+
+		contentType := c.Get("Content-Type")
+		if strings.Contains(contentType, "multipart/form-data") {
+			// ── Multipart upload from app camera ──────────────────────────────
+			caption   = c.FormValue("caption")
+			mediaType = c.FormValue("mediaType")
+			if mediaType == "" { mediaType = "image" }
+
+			file, err := c.FormFile("media")
+			if err == nil && file != nil {
+				src, err2 := file.Open()
+				if err2 == nil {
+					defer src.Close()
+					data := make([]byte, file.Size)
+					src.Read(data)
+					ext := "jpg"
+					ct  := "image/jpeg"
+					if mediaType == "video" { ext = "mp4"; ct = "video/mp4" }
+					objName := uuid.New().String() + "." + ext
+					pubURL, minioErr := saveToMinio("posts", objName, ct, data)
+					if minioErr == nil {
+						if mediaType == "video" { videoURL = pubURL } else { imageURL = pubURL }
+					}
+				}
+			}
+		} else {
+			// ── JSON from seed script ─────────────────────────────────────────
+			var req struct {
+				Caption   string `json:"caption"`
+				MediaType string `json:"mediaType"`
+				ImageURL  string `json:"imageUrl"`
+				VideoURL  string `json:"videoUrl"`
+			}
+			c.BodyParser(&req)
+			caption   = req.Caption
+			mediaType = req.MediaType
+			imageURL  = req.ImageURL
+			videoURL  = req.VideoURL
+		}
+
 		post := Post{
 			ID:        uuid.New().String(),
 			AuthorID:  uid,
 			Author:    author,
-			Caption:   req.Caption,
-			ImageURL:  req.ImageURL,
-			VideoURL:  req.VideoURL,
+			Caption:   caption,
+			ImageURL:  imageURL,
+			VideoURL:  videoURL,
 			IsStory:   false,
 			CreatedAt: time.Now(),
 		}
 		db.Create(&post)
-		return c.Status(201).JSON(postToMap(post, req.Caption, req.MediaType))
+		return c.Status(201).JSON(postToMap(post, caption, mediaType))
 	})
 
 	api.Post("/posts/:postId/react", func(c *fiber.Ctx) error {
@@ -620,7 +685,7 @@ func postToMap(p Post, caption, mediaType string) map[string]interface{} {
 		"id": p.ID, "authorId": p.AuthorID,
 		"authorUsername": authorUsername,
 		"authorProfileImageUrl": authorAvatar,
-		"caption": caption, "imageUrl": p.ImageURL,
+		"caption": caption, "imageUrl": p.ImageURL, "videoUrl": p.VideoURL,
 		"mediaType": mediaType, "likesCount": 0, "commentsCount": 0,
 		"createdAt": p.CreatedAt.UnixMilli(),
 		"likedBy": []string{}, "reactions": map[string]string{},

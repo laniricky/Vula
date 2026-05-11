@@ -165,9 +165,25 @@ fun PostCard(
                         })
                     }
             ) {
-                if (post.mediaType == "video") {
-                    VideoPlayer(post.imageUrl, Modifier.fillMaxSize())
-                } else {
+                if (post.mediaType == "video" && post.videoUrl != null) {
+                    VideoPlayer(post.videoUrl, Modifier.fillMaxSize())
+                    // Video badge
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            "▶ VIDEO",
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                } else if (post.imageUrl != null) {
                     AsyncImage(post.imageUrl, "Post image", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 }
 

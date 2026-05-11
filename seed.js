@@ -57,6 +57,13 @@ const POSTS = [
   { caption: 'Goree Island at dusk 🌊 #senegal #goree #heritage #travel', imageUrl: 'https://images.unsplash.com/photo-1541480601022-2308c0f02487?w=800', mediaType: 'image' },
   { caption: 'City portraits 🌃 #abuja #portrait #photography #urban', imageUrl: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=800', mediaType: 'image' },
   { caption: 'Lake Naivasha weekend escape 🚣 #kenya #travel #nature', imageUrl: 'https://images.unsplash.com/photo-1564419320461-6870880221ad?w=800', mediaType: 'image' },
+  // ── Video posts — using publicly hosted mp4 samples ───────────────────────
+  { caption: 'Nairobi skyline magic hour 🌇 #nairobi #video #africa', videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4', mediaType: 'video' },
+  { caption: 'Studio vibes in Dar es Salaam 🎥 #music #bts #afrobeats', videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4', mediaType: 'video' },
+  { caption: 'Kampala street life 🇺🇬 #uganda #city #vlog', videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4', mediaType: 'video' },
+  { caption: 'Hackathon pitch day 🚀 #accra #tech #startup', videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4', mediaType: 'video' },
+  { caption: 'Lagos book launch 📚 #poetry #nigeria #culture', videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4', mediaType: 'video' },
+  { caption: 'Dakar sunset dance 🎅 #senegal #dance #vibes', videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4', mediaType: 'video' },
 ];
 
 // ── Chat messages ─────────────────────────────────────────────────────────────
@@ -120,12 +127,14 @@ async function seed() {
 
     // Update profile
     await put('/api/users/me', {
-      displayName: user.displayName,
-      username:    user.username,
-      bio:         user.bio,
-      richStatus:  '',
-      website:     '',
-      isPrivate:   false,
+      displayName:     user.displayName,
+      username:        user.username,
+      bio:             user.bio,
+      richStatus:      '',
+      website:         '',
+      isPrivate:       false,
+      profileImageUrl: user.avatar,
+      bannerUrl:       user.banner || 'https://images.unsplash.com/photo-1506744626753-1fa30f9cb285?w=800'
     }, token);
 
     console.log(`✅  Created user: @${user.username} (${userId})`);
@@ -141,14 +150,15 @@ async function seed() {
     const session = sessions[i % sessions.length];
     const p       = POSTS[i];
 
-    // POST body — backend accepts JSON for caption + mediaType; imageUrl is provided as a URL
+    // POST body — backend accepts JSON for caption + mediaType; imageUrl/videoUrl provided as URL
     const body = {
       caption:   p.caption,
       mediaType: p.mediaType,
-      imageUrl:  p.imageUrl, // pre-hosted image, no upload needed for seeding
+      imageUrl:  p.imageUrl  || null,
+      videoUrl:  p.videoUrl  || null,
     };
     await post('/api/posts', body, session.token);
-    process.stdout.write('📸 ');
+    process.stdout.write(p.mediaType === 'video' ? '🎬 ' : '📸 ');
   }
   console.log(`\n✅  Created ${POSTS.length} posts`);
 

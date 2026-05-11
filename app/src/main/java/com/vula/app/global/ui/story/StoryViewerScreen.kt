@@ -118,7 +118,7 @@ fun StoryViewerScreen(
                 VideoPlayer(
                     videoUrl = currentStory.imageUrl,
                     modifier = Modifier.fillMaxSize(),
-                    playWhenReady = !isPaused
+                    autoPlay = !isPaused
                 )
             } else {
                 AsyncImage(

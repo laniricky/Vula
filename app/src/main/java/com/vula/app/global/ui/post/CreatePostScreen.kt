@@ -59,6 +59,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
+import com.vula.app.global.ui.components.VideoPlayer
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -136,13 +137,15 @@ fun CreatePostScreen(
         if (uiState is CreatePostUiState.Success) onPostCreated()
     }
 
-    // Gallery launcher fallback
+    // Gallery launcher — accepts both images and videos
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
             capturedUri = uri
-            capturedMediaType = "image"
+            // Detect media type from MIME type
+            val mime = context.contentResolver.getType(uri) ?: ""
+            capturedMediaType = if (mime.startsWith("video")) "video" else "image"
             showBottomSheet = true
         }
     }
@@ -347,12 +350,11 @@ fun CreatePostScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text("Recents", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text(
-                            "Browse all",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 13.sp,
-                            modifier = Modifier.clickable { galleryLauncher.launch("image/*") }
-                        )
+                        Text("Browse all",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable { galleryLauncher.launch("image/*,video/*") }
+                    )
                     }
 
                     if (galleryPhotos.isEmpty()) {
@@ -378,7 +380,9 @@ fun CreatePostScreen(
                                         )
                                         .clickable {
                                             capturedUri = uri
-                                            capturedMediaType = "image"
+                                            // Detect media type
+                                            val mime = context.contentResolver.getType(uri) ?: ""
+                                            capturedMediaType = if (mime.startsWith("video")) "video" else "image"
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             showBottomSheet = true
                                         }
@@ -416,14 +420,29 @@ fun CreatePostScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top
                     ) {
-                        AsyncImage(
-                            model = capturedUri,
-                            contentDescription = null,
-                            modifier = Modifier
-                                .size(80.dp)
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
-                        )
+                        // Show video player preview if video, else image
+                        if (capturedMediaType == "video") {
+                            Box(
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            ) {
+                                VideoPlayer(
+                                    videoUrl = capturedUri.toString(),
+                                    modifier = Modifier.fillMaxSize(),
+                                    autoPlay = true
+                                )
+                            }
+                        } else {
+                            AsyncImage(
+                                model = capturedUri,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(80.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                         Spacer(Modifier.width(12.dp))
                         BasicTextField(
                             value = caption,
@@ -604,21 +623,29 @@ fun SettingsItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: S
 
 fun loadRecentGalleryUris(context: Context, limit: Int): List<Uri> {
     val uris = mutableListOf<Uri>()
-    val collection = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-    val projection = arrayOf(MediaStore.Images.Media._ID)
-    val sortOrder = "${MediaStore.Images.Media.DATE_ADDED} DESC"
-    try {
-        context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
-            var count = 0
-            while (cursor.moveToNext() && count < limit) {
-                val id = cursor.getLong(idCol)
-                uris.add(Uri.withAppendedPath(collection, id.toString()))
-                count++
+    // Load both images and videos
+    val collections = listOf(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI to MediaStore.Images.Media.DATE_ADDED,
+        MediaStore.Video.Media.EXTERNAL_CONTENT_URI  to MediaStore.Video.Media.DATE_ADDED
+    )
+    for ((collection, dateCol) in collections) {
+        val projection = arrayOf(MediaStore.MediaColumns._ID)
+        val sortOrder  = "$dateCol DESC"
+        try {
+            context.contentResolver.query(collection, projection, null, null, sortOrder)?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                var count = 0
+                while (cursor.moveToNext() && count < limit / 2) {
+                    val id = cursor.getLong(idCol)
+                    uris.add(Uri.withAppendedPath(collection, id.toString()))
+                    count++
+                }
             }
+        } catch (e: Exception) {
+            Log.e("Gallery", "Failed to load gallery", e)
         }
-    } catch (e: Exception) {
-        Log.e("Gallery", "Failed to load gallery", e)
     }
+    // Sort merged list by recency isn't trivially possible without timestamps;
+    // return as-is (images first then videos) — good enough for the strip.
     return uris
 }

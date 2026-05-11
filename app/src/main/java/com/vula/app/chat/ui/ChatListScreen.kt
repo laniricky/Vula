@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.Message
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,7 +51,7 @@ fun ChatListScreen(
     viewModel: ChatViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("All", "Mentions", "Likes", "Comments", "Follows")
+    val tabs = listOf("All", "Messages", "Mentions", "Likes", "Comments", "Follows")
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -84,6 +85,7 @@ fun ChatListScreen(
                         onClick = { selectedTab = index },
                         label = { Text(tabs[index], fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
                         leadingIcon = {
+                            if (tabs[index] == "Messages") Icon(Icons.Default.Message, null, modifier = Modifier.size(16.dp))
                             if (tabs[index] == "Mentions") Icon(Icons.Default.AlternateEmail, null, modifier = Modifier.size(16.dp))
                             if (tabs[index] == "Likes") Icon(Icons.Default.Favorite, null, modifier = Modifier.size(16.dp))
                             if (tabs[index] == "Comments") Icon(Icons.Default.ChatBubble, null, modifier = Modifier.size(16.dp))
@@ -99,10 +101,58 @@ fun ChatListScreen(
                 }
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 100.dp)
-            ) {
+            if (tabs[selectedTab] == "Messages") {
+                val rooms by viewModel.roomsState.collectAsState()
+                val roomNames by viewModel.roomNames.collectAsState()
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 100.dp)
+                ) {
+                    items(rooms.size) { index ->
+                        val room = rooms[index]
+                        val name = if (room.type == "group") room.name ?: "Group" else (roomNames[room.id] ?: "Unknown")
+                        
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChatClick(room.id) }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(name.take(1).uppercase(), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(room.lastMessage ?: "Started a conversation", color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, fontSize = 14.sp)
+                            }
+                            if (room.unreadFor.contains(viewModel.currentUserId)) {
+                                Box(modifier = Modifier.size(10.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary))
+                            }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant, thickness = 0.5.dp)
+                    }
+                    if (rooms.isEmpty()) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
+                                Text("No messages yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 100.dp)
+                ) {
                 // ── Today Headers ───────────────────────────────────────────────
                 item {
                     Text("New", fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp, 8.dp))
@@ -195,7 +245,8 @@ fun ChatListScreen(
                         StatItem(Icons.Default.Visibility, "1.2K", "Views")
                     }
                 }
-            }
+                } // end LazyColumn (else)
+            } // end else
         }
     }
 }

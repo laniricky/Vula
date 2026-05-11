@@ -60,6 +60,7 @@ data class ApiPost(
     val authorProfileImageUrl: String? = null,
     val caption: String = "",
     val imageUrl: String? = null,
+    val videoUrl: String? = null,
     val mediaType: String = "image",
     val likesCount: Int = 0,
     val commentsCount: Int = 0,
