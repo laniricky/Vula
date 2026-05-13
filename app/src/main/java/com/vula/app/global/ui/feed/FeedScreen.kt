@@ -12,13 +12,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -45,6 +47,7 @@ fun FeedScreen(
     onNavigateToStory: (Int) -> Unit = {},
     onNavigateToCreateStory: () -> Unit = {},
     onNavigateToCreatePost: () -> Unit = {},
+    onNavigateToRipples: () -> Unit = {},
     onDmReplyToPost: (Post) -> Unit = {},
     onMenuClick: (() -> Unit)? = null,
     viewModel: FeedViewModel = hiltViewModel()
@@ -74,9 +77,29 @@ fun FeedScreen(
                             Icon(Icons.Default.Search, contentDescription = "Search",
                                 tint = MaterialTheme.colorScheme.onBackground)
                         }
-                        IconButton(onClick = {}) {
-                            Icon(Icons.Default.Notifications, contentDescription = "Notifications",
-                                tint = MaterialTheme.colorScheme.onBackground)
+                        // Ripples shortcut — gradient tint on the Waves icon
+                        Box(
+                            modifier         = androidx.compose.ui.Modifier
+                                .padding(end = 4.dp)
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(
+                                            androidx.compose.ui.graphics.Color(0xFF00E5FF),
+                                            androidx.compose.ui.graphics.Color(0xFF0072FF)
+                                        )
+                                    )
+                                )
+                                .clickable(onClick = onNavigateToRipples),
+                            contentAlignment = androidx.compose.ui.Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector        = Icons.Filled.Waves,
+                                contentDescription = "Ripples",
+                                tint               = androidx.compose.ui.graphics.Color.White,
+                                modifier           = androidx.compose.ui.Modifier.size(20.dp)
+                            )
                         }
                     }
                 )

@@ -247,8 +247,8 @@ class DiscoverViewModel @Inject constructor(
                 }
                 val limit = if (_activeFilter.value == DiscoverFilter.CLIPS) CLIPS_LIMIT else EXPLORE_LIMIT
 
-                val postsDeferred   = async { api.getExplorePosts(filter, limit).body() ?: emptyList() }
-                val peopleDeferred  = async { api.getSuggestedUsers(15).body() ?: emptyList() }
+                val postsDeferred   = async { runCatching { api.getExplorePosts(filter, limit).body() ?: emptyList() }.getOrElse { emptyList() } }
+                val peopleDeferred  = async { runCatching { api.getSuggestedUsers(15).body() ?: emptyList() }.getOrElse { emptyList() } }
 
                 var apiPosts = postsDeferred.await()
                 val apiPeople = peopleDeferred.await()

@@ -21,21 +21,25 @@ class StoryRepositoryImpl @Inject constructor(
 ) : StoryRepository {
 
     override fun getStories(): Flow<List<Story>> = flow {
-        val response = api.getStories()
-        if (response.isSuccessful) {
-            emit(response.body()?.map {
-                Story(
-                    id                    = it.id,
-                    authorId              = it.authorId,
-                    authorUsername        = it.authorUsername,
-                    authorProfileImageUrl = it.authorProfileImageUrl,
-                    imageUrl              = it.imageUrl,
-                    mediaType             = it.mediaType,
-                    createdAt             = it.createdAt,
-                    expiresAt             = it.expiresAt
-                )
-            } ?: emptyList())
-        } else {
+        try {
+            val response = api.getStories()
+            if (response.isSuccessful) {
+                emit(response.body()?.map {
+                    Story(
+                        id                    = it.id,
+                        authorId              = it.authorId,
+                        authorUsername        = it.authorUsername,
+                        authorProfileImageUrl = it.authorProfileImageUrl,
+                        imageUrl              = it.imageUrl,
+                        mediaType             = it.mediaType,
+                        createdAt             = it.createdAt,
+                        expiresAt             = it.expiresAt
+                    )
+                } ?: emptyList())
+            } else {
+                emit(emptyList())
+            }
+        } catch (e: Exception) {
             emit(emptyList())
         }
     }

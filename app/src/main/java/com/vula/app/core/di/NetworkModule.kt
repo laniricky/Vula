@@ -23,7 +23,7 @@ object NetworkModule {
     private fun getBaseUrl(): String {
         // Windows Subsystem for Android (WSA)
         if (android.os.Build.MODEL.contains("Subsystem for Android")) {
-            return "http://192.168.137.1:8081"
+            return "http://10.100.8.139:8081"
         }
         val isEmulator = android.os.Build.FINGERPRINT.contains("generic") ||
                 android.os.Build.FINGERPRINT.startsWith("unknown") ||
@@ -34,7 +34,7 @@ object NetworkModule {
                 (android.os.Build.BRAND.startsWith("generic") && android.os.Build.DEVICE.startsWith("generic")) ||
                 "google_sdk" == android.os.Build.PRODUCT
 
-        return if (isEmulator) "http://10.0.2.2:8081" else "http://192.168.137.1:8081"
+        return if (isEmulator) "http://10.0.2.2:8081" else "http://10.100.8.139:8081"
     }
 
     @Provides

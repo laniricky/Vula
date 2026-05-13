@@ -27,6 +27,7 @@ import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Person
+import com.vula.app.global.ui.ripples.RipplesScreen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -80,6 +81,7 @@ sealed class Screen(
     object Register    : Screen("register",              "Register", null)
     object Feed        : Screen("feed",         "Home",     Icons.Filled.Home,          Icons.Outlined.Home)
     object Local       : Screen("local",        "Local",   Icons.Filled.Wifi,          null)
+    object Ripples     : Screen("ripples",      "Ripples", null)
     object CreatePost  : Screen("create_post",  "Camera",  Icons.Filled.CameraAlt,     null)
     object CreateStory : Screen("create_story", "Story",   null)
     object Chat        : Screen("chat",         "Activity",Icons.Filled.Notifications, Icons.Outlined.Notifications)
@@ -146,7 +148,7 @@ fun VulaApp(
         }
     }
 
-    val showBottomBar = currentRoute in bottomNavScreens.map { it.route } && currentRoute != Screen.CreatePost.route
+    val showBottomBar = currentRoute in bottomNavScreens.map { it.route }
 
     // ── True floating pill: content fills the entire screen; pill overlays on top ──
     Box(modifier = Modifier.fillMaxSize()) {
@@ -243,6 +245,9 @@ fun VulaBottomBar(
                         when (screen) {
                             Screen.CreatePost -> {
                                 // ╌╌ Gradient camera button ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+                                val cameraGradient = Brush.linearGradient(
+                                    listOf(Color(0xFF00C6FF), Color(0xFF0072FF))
+                                )
                                 Box(
                                     modifier         = Modifier
                                         .graphicsLayer { scaleX = scale; scaleY = scale }
@@ -373,6 +378,7 @@ fun VulaNavGraph(
                     onNavigateToCreateStory = {
                         navController.navigate(Screen.CreateStory.route)
                     },
+                    onNavigateToRipples  = { navController.navigate(Screen.Ripples.route) },
                     onDmReplyToPost = { post ->
                         chatViewModel.createDirectChat(post.authorId) { roomId ->
                             if (roomId != null) {
@@ -420,6 +426,18 @@ fun VulaNavGraph(
         // Local Mode
         composable(Screen.Local.route) {
             LocalModeScreen(onMenuClick = null)
+        }
+
+        // Ripples
+        composable(Screen.Ripples.route) {
+            currentUserId?.let { uid ->
+                RipplesScreen(
+                    currentUserId        = uid,
+                    onNavigateToProfile  = { userId -> navController.navigate(Screen.UserProfile.createRoute(userId)) },
+                    onNavigateToComments = { postId -> navController.navigate(Screen.Comments.createRoute(postId)) },
+                    onNavigateToCreatePost = { navController.navigate(Screen.CreatePost.route) }
+                )
+            }
         }
 
         // Create Post

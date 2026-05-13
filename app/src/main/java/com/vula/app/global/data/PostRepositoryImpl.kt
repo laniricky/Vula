@@ -26,19 +26,27 @@ class PostRepositoryImpl @Inject constructor(
     // ── Feed ─────────────────────────────────────────────────────────────────
 
     override fun getGlobalFeed(): Flow<List<Post>> = flow {
-        val response = api.getFeed()
-        if (response.isSuccessful) {
-            emit(response.body()?.map { it.toPost() } ?: emptyList())
-        } else {
+        try {
+            val response = api.getFeed()
+            if (response.isSuccessful) {
+                emit(response.body()?.map { it.toPost() } ?: emptyList())
+            } else {
+                emit(emptyList())
+            }
+        } catch (e: Exception) {
             emit(emptyList())
         }
     }
 
     override fun getUserPosts(userId: String): Flow<List<Post>> = flow {
-        val response = api.getUserPosts(userId)
-        if (response.isSuccessful) {
-            emit(response.body()?.map { it.toPost() } ?: emptyList())
-        } else {
+        try {
+            val response = api.getUserPosts(userId)
+            if (response.isSuccessful) {
+                emit(response.body()?.map { it.toPost() } ?: emptyList())
+            } else {
+                emit(emptyList())
+            }
+        } catch (e: Exception) {
             emit(emptyList())
         }
     }
@@ -119,18 +127,22 @@ class PostRepositoryImpl @Inject constructor(
     }
 
     override fun getComments(postId: String): Flow<List<Comment>> = flow {
-        val response = api.getComments(postId)
-        if (response.isSuccessful) {
-            emit(response.body()?.map {
-                Comment(
-                    id             = it.id,
-                    authorId       = it.authorId,
-                    authorUsername = it.authorUsername,
-                    text           = it.text,
-                    createdAt      = it.createdAt
-                )
-            } ?: emptyList())
-        } else {
+        try {
+            val response = api.getComments(postId)
+            if (response.isSuccessful) {
+                emit(response.body()?.map {
+                    Comment(
+                        id             = it.id,
+                        authorId       = it.authorId,
+                        authorUsername = it.authorUsername,
+                        text           = it.text,
+                        createdAt      = it.createdAt
+                    )
+                } ?: emptyList())
+            } else {
+                emit(emptyList())
+            }
+        } catch (e: Exception) {
             emit(emptyList())
         }
     }
