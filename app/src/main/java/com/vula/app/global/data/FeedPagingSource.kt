@@ -25,7 +25,10 @@ class FeedPagingSource(
             if (!response.isSuccessful) {
                 return LoadResult.Error(Exception("Feed error: ${response.code()}"))
             }
-            val posts = response.body()?.map { it.toPost() } ?: emptyList()
+            val posts = response.body()
+                ?.map { it.toPost() }
+                ?.filter { it.mediaType != "video" } // Videos go to Ripples only
+                ?: emptyList()
             LoadResult.Page(
                 data     = posts,
                 prevKey  = if (page == 1) null else page - 1,

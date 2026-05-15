@@ -67,42 +67,57 @@ fun FeedScreen(
             contentPadding = PaddingValues(bottom = 100.dp)
         ) {
 
-            // ── Top bar matching Activity/Profile theme ───────────────────────
+            // ── Top bar — Home | ≈ Ripples | 🔍 Search ─────────────────────
             item {
-                VulaTopBar(
-                    title     = "Home",
-                    showStats = false,
-                    actions   = {
-                        IconButton(onClick = onNavigateToSearch) {
-                            Icon(Icons.Default.Search, contentDescription = "Search",
-                                tint = MaterialTheme.colorScheme.onBackground)
-                        }
-                        // Ripples shortcut — gradient tint on the Waves icon
-                        Box(
-                            modifier         = androidx.compose.ui.Modifier
-                                .padding(end = 4.dp)
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(
-                                            androidx.compose.ui.graphics.Color(0xFF00E5FF),
-                                            androidx.compose.ui.graphics.Color(0xFF0072FF)
-                                        )
-                                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 10.dp)
+                ) {
+                    // Left: title
+                    Text(
+                        text       = "Home",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize   = 22.sp,
+                        color      = MaterialTheme.colorScheme.onBackground,
+                        modifier   = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 8.dp)
+                    )
+                    // Center: Ripples shortcut
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFF00E5FF), Color(0xFF0072FF))
                                 )
-                                .clickable(onClick = onNavigateToRipples),
-                            contentAlignment = androidx.compose.ui.Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector        = Icons.Filled.Waves,
-                                contentDescription = "Ripples",
-                                tint               = androidx.compose.ui.graphics.Color.White,
-                                modifier           = androidx.compose.ui.Modifier.size(20.dp)
                             )
-                        }
+                            .clickable(onClick = onNavigateToRipples),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Waves,
+                            contentDescription = "Ripples",
+                            tint     = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
-                )
+                    // Right: search
+                    IconButton(
+                        onClick  = onNavigateToSearch,
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
             }
 
             // ── Stories bar ───────────────────────────────────────────────────

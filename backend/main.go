@@ -694,7 +694,13 @@ func postToMap(p Post, caption, mediaType string) map[string]interface{} {
 
 func postsToSlice(posts []Post) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0)
-	for _, p := range posts { out = append(out, postToMap(p, "", "image")) }
+	for _, p := range posts {
+		mt := "image"
+		if p.VideoURL != "" {
+			mt = "video"
+		}
+		out = append(out, postToMap(p, "", mt))
+	}
 	return out
 }
 

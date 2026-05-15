@@ -103,17 +103,6 @@ fun RipplesScreen(
                 }
             }
         }
-
-        // Mode pill always on top
-        RipplesModePill(
-            isGlobal     = isGlobal,
-            accent       = accent,
-            onModeChange = { viewModel.setMode(it) },
-            modifier     = Modifier
-                .align(Alignment.TopCenter)
-                .statusBarsPadding()
-                .padding(top = 12.dp)
-        )
     }
 }
 
@@ -196,21 +185,21 @@ private fun RippleItem(
         // Double-tap heart
         DoubleTapHeart(show = showHeart, offset = heartOffset, accent = accent)
 
-        // Right action bar
+        // ── Right-side vertical action bar ──────────────────────────────
         RipplesActionBar(
-            post        = post,
-            isLiked     = isLiked,
-            accent      = accent,
-            onLike      = onLike,
-            onComments  = onCommentsClick,
-            modifier    = Modifier
+            post       = post,
+            isLiked    = isLiked,
+            accent     = accent,
+            onLike     = onLike,
+            onComments = onCommentsClick,
+            modifier   = Modifier
                 .align(Alignment.CenterEnd)
                 .padding(end = 12.dp)
                 .navigationBarsPadding()
                 .padding(bottom = 80.dp)
         )
 
-        // Bottom author info
+        // ── Bottom-left author info ─────────────────────────────────────
         RipplesAuthorBar(
             post           = post,
             accent         = accent,
@@ -268,17 +257,16 @@ private fun RipplesActionBar(
     onComments: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val heartScale by animateFloatAsState(
+        targetValue   = if (isLiked) 1.3f else 1f,
+        animationSpec = spring(Spring.DampingRatioMediumBouncy),
+        label         = "heart_btn"
+    )
     Column(
         modifier              = modifier,
         horizontalAlignment   = Alignment.CenterHorizontally,
         verticalArrangement   = Arrangement.spacedBy(20.dp)
     ) {
-        val heartScale by animateFloatAsState(
-            targetValue   = if (isLiked) 1.3f else 1f,
-            animationSpec = spring(Spring.DampingRatioMediumBouncy),
-            label         = "heart_btn"
-        )
-        // Like
         ActionBtn(
             icon    = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
             tint    = if (isLiked) accent else Color.White,
@@ -286,17 +274,14 @@ private fun RipplesActionBar(
             scale   = heartScale,
             onClick = onLike
         )
-        // Comments
         ActionBtn(
             icon    = Icons.Outlined.ChatBubbleOutline,
             tint    = Color.White,
             label   = formatCount(post.commentsCount),
             onClick = onComments
         )
-        // Echo (share)
-        ActionBtn(icon = Icons.Outlined.Send, tint = Color.White, label = "Echo", onClick = {})
-        // Ripple reply
-        ActionBtn(icon = Icons.Filled.Waves, tint = Color.White, label = "Ripple", onClick = {})
+        ActionBtn(icon = Icons.Outlined.Send, tint = Color.White, label = "Echo",   onClick = {})
+        ActionBtn(icon = Icons.Filled.Waves,  tint = Color.White, label = "Ripple", onClick = {})
     }
 }
 
@@ -308,16 +293,22 @@ private fun ActionBtn(
     scale: Float = 1f,
     onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        modifier = Modifier.padding(horizontal = 4.dp)
+    ) {
         IconButton(onClick = onClick) {
             Icon(
                 imageVector        = icon,
                 contentDescription = label,
                 tint               = tint,
-                modifier           = Modifier.size(28.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+                modifier           = Modifier
+                    .size(26.dp)
+                    .graphicsLayer { scaleX = scale; scaleY = scale }
             )
         }
-        Text(text = label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(text = label, color = Color.White.copy(alpha = 0.9f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }
 
