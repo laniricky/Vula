@@ -79,3 +79,10 @@ func (h *Hub) SendMessage(userID string, message interface{}) {
 		}
 	}
 }
+
+// BroadcastRoom sends a payload to all connected participants of a room
+func (h *Hub) BroadcastRoom(participants []User, message interface{}) {
+	for _, p := range participants {
+		h.SendMessage(p.ID, message)
+	}
+}

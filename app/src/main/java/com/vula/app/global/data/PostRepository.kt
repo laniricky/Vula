@@ -15,4 +15,5 @@ interface PostRepository {
     suspend fun removeReaction(postId: String, userId: String): Result<Unit>
     suspend fun addComment(postId: String, text: String): Result<Unit>
     fun getComments(postId: String): Flow<List<Comment>>
+    suspend fun deletePost(postId: String): Result<Unit>
 }

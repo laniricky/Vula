@@ -57,6 +57,9 @@ fun PostCard(
     onCommentClick: (String) -> Unit,
     onDmReplyToPost: (Post) -> Unit = {},
     onUserClick: (String) -> Unit = {},
+    onDeleteClick: (String) -> Unit = {},
+    onReportClick: (String) -> Unit = {},
+    onBlockClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isLiked       = post.likedBy.contains(currentUserId)
@@ -68,6 +71,8 @@ fun PostCard(
     var commentFocus  by remember { mutableStateOf(false) }
     val focusMgr      = LocalFocusManager.current
     val haptic        = LocalHapticFeedback.current
+
+    var expandedMenu  by remember { mutableStateOf(false) }
 
     LaunchedEffect(showHeart) { if (showHeart) { delay(900); showHeart = false } }
 
@@ -104,12 +109,43 @@ fun PostCard(
                     )
                 }
             }
-            IconButton(onClick = {}, modifier = Modifier.size(30.dp)) {
-                Icon(
-                    Icons.Default.MoreHoriz, null,
-                    tint     = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    modifier = Modifier.size(18.dp)
-                )
+            Box {
+                IconButton(onClick = { expandedMenu = true }, modifier = Modifier.size(30.dp)) {
+                    Icon(
+                        Icons.Default.MoreHoriz, null,
+                        tint     = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = expandedMenu,
+                    onDismissRequest = { expandedMenu = false }
+                ) {
+                    if (currentUserId == post.authorId) {
+                        DropdownMenuItem(
+                            text = { Text("Delete Post", color = MaterialTheme.colorScheme.error) },
+                            onClick = {
+                                expandedMenu = false
+                                onDeleteClick(post.id)
+                            }
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("Report Post") },
+                            onClick = { 
+                                expandedMenu = false
+                                onReportClick(post.id)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Block User") },
+                            onClick = {
+                                expandedMenu = false
+                                onBlockClick(post.authorId)
+                            }
+                        )
+                    }
+                }
             }
         }
 

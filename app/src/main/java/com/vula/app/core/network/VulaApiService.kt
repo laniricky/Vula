@@ -120,6 +120,7 @@ data class ApiChatRoom(
 @JsonClass(generateAdapter = true)
 data class ApiMessage(
     val id: String = "",
+    val roomId: String = "",
     val senderId: String = "",
     val senderUsername: String = "",
     val text: String = "",
@@ -136,6 +137,9 @@ data class CreateDirectChatBody(val otherUserId: String)
 
 @JsonClass(generateAdapter = true)
 data class CreateDirectChatResponse(val roomId: String)
+
+@JsonClass(generateAdapter = true)
+data class ReportBody(val reason: String)
 
 // ── Message Requests ─────────────────────────────────────────────────────────
 
@@ -247,6 +251,18 @@ interface VulaApiService {
         @Query("filter") filter: String = "trending",
         @Query("limit") limit: Int = 40
     ): Response<List<ApiPost>>
+    
+    @DELETE("/api/posts/{postId}")
+    suspend fun deletePost(@Path("postId") postId: String): Response<Unit>
+    
+    @POST("/api/posts/{postId}/report")
+    suspend fun reportPost(
+        @Path("postId") postId: String,
+        @Body body: ReportBody
+    ): Response<Unit>
+    
+    @POST("/api/users/{userId}/block")
+    suspend fun blockUser(@Path("userId") userId: String): Response<Unit>
 
     @Multipart
     @POST("/api/posts")

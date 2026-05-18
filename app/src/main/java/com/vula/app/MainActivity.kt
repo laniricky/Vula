@@ -20,12 +20,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import javax.inject.Inject
 
+import androidx.activity.enableEdgeToEdge
+
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     @Inject lateinit var preferencesDataStore: PreferencesDataStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         // Read synchronously once — tiny DataStore read is safe on main before setContent

@@ -65,4 +65,20 @@ class FeedViewModel @Inject constructor(
     fun removeReaction(postId: String, currentUserId: String) {
         viewModelScope.launch { postRepository.removeReaction(postId, currentUserId) }
     }
+
+    fun deletePost(postId: String) {
+        viewModelScope.launch { postRepository.deletePost(postId) }
+    }
+    
+    fun reportPost(postId: String) {
+        viewModelScope.launch { 
+            try { api.reportPost(postId, com.vula.app.core.network.ReportBody("Inappropriate content")) } catch (_: Exception) {} 
+        }
+    }
+    
+    fun blockUser(userId: String) {
+        viewModelScope.launch {
+            try { api.blockUser(userId) } catch (_: Exception) {}
+        }
+    }
 }

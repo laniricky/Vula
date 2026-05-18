@@ -180,7 +180,10 @@ fun FeedScreen(
                         onRemoveReaction = { viewModel.removeReaction(it, currentUserId) },
                         onCommentClick   = { onNavigateToComments(it) },
                         onDmReplyToPost  = { onDmReplyToPost(it) },
-                        onUserClick      = { onNavigateToProfile(it) }
+                        onUserClick      = { onNavigateToProfile(it) },
+                        onDeleteClick    = { viewModel.deletePost(it) },
+                        onReportClick    = { viewModel.reportPost(it) },
+                        onBlockClick     = { viewModel.blockUser(it) }
                     )
                 }
             }

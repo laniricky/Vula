@@ -10,6 +10,10 @@ import com.vula.app.core.network.VulaApiService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -58,28 +62,41 @@ class PostRepositoryImpl @Inject constructor(
         mediaUri: Uri?,
         mediaType: String
     ): Result<Unit> {
-        return try {
-            val captionBody   = caption.toRequestBody("text/plain".toMediaTypeOrNull())
-            val mediaTypeBody = mediaType.toRequestBody("text/plain".toMediaTypeOrNull())
+        // Return immediately so the UI can navigate back to feed
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val captionBody   = caption.toRequestBody("text/plain".toMediaTypeOrNull())
+                val mediaTypeBody = mediaType.toRequestBody("text/plain".toMediaTypeOrNull())
 
-            val mediaPart: MultipartBody.Part? = mediaUri?.let { uri ->
-                val inputStream = context.contentResolver.openInputStream(uri)
-                    ?: return Result.failure(Exception("Cannot open media"))
-                val ext  = if (mediaType == "video") "mp4" else "jpg"
-                val file = File(context.cacheDir, "upload_${System.currentTimeMillis()}.$ext")
-                FileOutputStream(file).use { out -> inputStream.copyTo(out) }
-                val requestBody = file.asRequestBody(
-                    (if (mediaType == "video") "video/mp4" else "image/jpeg").toMediaTypeOrNull()
-                )
-                MultipartBody.Part.createFormData("media", file.name, requestBody)
+                val mediaPart: MultipartBody.Part? = mediaUri?.let { uri ->
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                        ?: return@launch
+                    val ext  = if (mediaType == "video") "mp4" else "jpg"
+                    val file = File(context.cacheDir, "upload_${System.currentTimeMillis()}.$ext")
+                    FileOutputStream(file).use { out -> inputStream.copyTo(out) }
+                    val requestBody = file.asRequestBody(
+                        (if (mediaType == "video") "video/mp4" else "image/jpeg").toMediaTypeOrNull()
+                    )
+                    MultipartBody.Part.createFormData("media", file.name, requestBody)
+                }
+
+                val response = api.createPost(mediaPart, captionBody, mediaTypeBody)
+                if (response.isSuccessful) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Upload complete", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Upload failed", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Upload error", android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
-
-            val response = api.createPost(mediaPart, captionBody, mediaTypeBody)
-            if (response.isSuccessful) Result.success(Unit)
-            else Result.failure(Exception("Create post failed: ${response.code()}"))
-        } catch (e: Exception) {
-            Result.failure(e)
         }
+        return Result.success(Unit)
     }
 
     // ── Reactions ─────────────────────────────────────────────────────────────
@@ -144,6 +161,16 @@ class PostRepositoryImpl @Inject constructor(
             }
         } catch (e: Exception) {
             emit(emptyList())
+        }
+    }
+
+    override suspend fun deletePost(postId: String): Result<Unit> {
+        return try {
+            val response = api.deletePost(postId)
+            if (response.isSuccessful) Result.success(Unit)
+            else Result.failure(Exception("Delete post failed: ${response.code()}"))
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 }

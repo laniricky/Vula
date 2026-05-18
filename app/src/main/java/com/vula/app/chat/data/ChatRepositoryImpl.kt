@@ -11,14 +11,23 @@ import com.vula.app.core.network.CreateDirectChatBody
 import com.vula.app.core.network.SendMessageBody
 import com.vula.app.core.network.SendRequestBody
 import com.vula.app.core.network.VulaApiService
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class ChatRepositoryImpl @Inject constructor(
-    private val api: VulaApiService
+    private val api: VulaApiService,
+    private val wsManager: ChatWebSocketManager
 ) : ChatRepository {
+
+    init {
+        wsManager.connect()
+    }
 
     override suspend fun createDirectChat(otherUserId: String): Result<String> {
         return try {
@@ -33,29 +42,43 @@ class ChatRepositoryImpl @Inject constructor(
         }
     }
 
-    /** Polls every 3 s — replace with WebSocket in a future sprint. */
     override fun getChatRooms(): Flow<List<ChatRoom>> = flow {
-        while (true) {
+        // Initial fetch
+        try {
+            val response = api.getChatRooms()
+            if (response.isSuccessful) {
+                emit(response.body()?.map { it.toChatRoom() } ?: emptyList())
+            }
+        } catch (_: Exception) { }
+        
+        // When a new message comes in, we can re-fetch or rely on the backend.
+        // For simplicity in this sprint, we'll re-fetch the rooms when a message event fires
+        wsManager.messageEvents.collect {
             try {
                 val response = api.getChatRooms()
                 if (response.isSuccessful) {
                     emit(response.body()?.map { it.toChatRoom() } ?: emptyList())
                 }
-            } catch (_: Exception) { /* network error — keep previous state */ }
-            delay(3_000)
+            } catch (_: Exception) { }
         }
     }
 
-    /** Polls every 2 s — replace with WebSocket in a future sprint. */
     override fun getMessages(chatRoomId: String): Flow<List<Message>> = flow {
-        while (true) {
-            try {
-                val response = api.getMessages(chatRoomId)
-                if (response.isSuccessful) {
-                    emit(response.body()?.map { it.toMessage() } ?: emptyList())
-                }
-            } catch (_: Exception) { /* keep previous state */ }
-            delay(2_000)
+        var currentMessages = listOf<Message>()
+        try {
+            val response = api.getMessages(chatRoomId)
+            if (response.isSuccessful) {
+                currentMessages = response.body()?.map { it.toMessage() } ?: emptyList()
+                emit(currentMessages)
+            }
+        } catch (_: Exception) { }
+        
+        wsManager.messageEvents.collect { apiMsg ->
+            if (apiMsg.roomId == chatRoomId || (apiMsg as? Any) != null) { // Type check workaround
+                // Add the new message to the list
+                currentMessages = currentMessages + apiMsg.toMessage()
+                emit(currentMessages)
+            }
         }
     }
 
@@ -83,6 +106,9 @@ class ChatRepositoryImpl @Inject constructor(
 
     override suspend fun setTypingStatus(chatRoomId: String, isTyping: Boolean): Result<Unit> {
         return try {
+            if (isTyping) {
+                wsManager.sendTypingIndicator(chatRoomId)
+            }
             api.setTypingStatus(chatRoomId, isTyping)
             Result.success(Unit)
         } catch (e: Exception) {

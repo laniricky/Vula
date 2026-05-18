@@ -13,6 +13,7 @@ type User struct {
 	ProfileImageURL string
 	BannerURL       string
 	FCMToken        string
+	IsPrivate       bool   `gorm:"default:false"`
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 }
@@ -26,6 +27,17 @@ type Post struct {
 	ImageURL  string
 	VideoURL  string
 	IsStory   bool      `gorm:"default:false"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// Comment represents a comment on a Post
+type Comment struct {
+	ID        string `gorm:"primaryKey"`
+	PostID    string `gorm:"index"`
+	AuthorID  string
+	Author    User   `gorm:"foreignKey:AuthorID"`
+	Text      string
 	CreatedAt time.Time
 }
 
@@ -59,6 +71,23 @@ type Follow struct {
 	CreatedAt  time.Time
 }
 
+// Block represents a user blocking another user
+type Block struct {
+	BlockerID string    `gorm:"primaryKey"`
+	BlockedID string    `gorm:"primaryKey"`
+	CreatedAt time.Time
+}
+
+// Report represents a content/user report
+type Report struct {
+	ID         string    `gorm:"primaryKey"`
+	ReporterID string    `gorm:"index"`
+	TargetType string    // "post" | "user"
+	TargetID   string    `gorm:"index"`
+	Reason     string
+	CreatedAt  time.Time
+}
+
 // ChatRoom represents a conversation thread
 type ChatRoom struct {
 	ID              string    `gorm:"primaryKey"`
@@ -78,6 +107,7 @@ type ChatMessage struct {
 	Sender    User      `gorm:"foreignKey:SenderID"`
 	Text      string
 	VoiceURL  string
+	MediaURL  string
 	CreatedAt time.Time
 	ReadBy    []User    `gorm:"many2many:message_read_receipts;"`
 }
@@ -90,4 +120,16 @@ type MessageRequest struct {
 	FromUsername string
 	Status       string    `gorm:"default:'pending'"` // pending | accepted | declined
 	CreatedAt    time.Time
+}
+
+// Notification represents an in-app notification
+type Notification struct {
+	ID         string    `gorm:"primaryKey"`
+	UserID     string    `gorm:"index"` // recipient
+	ActorID    string    // who triggered it
+	ActorName  string
+	Type       string    // follow | like | comment | message_request
+	TargetID   string    // postId or userId depending on type
+	Read       bool      `gorm:"default:false"`
+	CreatedAt  time.Time
 }

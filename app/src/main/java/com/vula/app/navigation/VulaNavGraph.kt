@@ -148,7 +148,7 @@ fun VulaApp(
         }
     }
 
-    val showBottomBar = currentRoute in bottomNavScreens.map { it.route }
+    val showBottomBar = currentRoute in bottomNavScreens.map { it.route } && currentRoute != Screen.CreatePost.route
 
     // ── True floating pill: content fills the entire screen; pill overlays on top ──
     Box(modifier = Modifier.fillMaxSize()) {

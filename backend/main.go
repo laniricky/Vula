@@ -17,8 +17,10 @@ import (
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/google/uuid"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
@@ -33,10 +35,6 @@ var (
 	hub    *Hub
 	ctx    = context.Background()
 )
-
-// DEV_OTP_BYPASS — when set to a non-empty string, any code equal to this
-// value is accepted without Redis verification. Disabled in production.
-const DEV_OTP_BYPASS = "123456"
 
 func initRedis() {
 	rdb = redis.NewClient(&redis.Options{Addr: "redis:6379"})
@@ -58,8 +56,8 @@ func initDB() {
 	if err != nil {
 		log.Fatal("Failed to connect to PostgreSQL:", err)
 	}
-	err = db.AutoMigrate(&User{}, &Post{}, &Reaction{}, &ChatRoom{}, &ChatMessage{},
-		&Follow{}, &Story{}, &MessageRequest{})
+	err = db.AutoMigrate(&User{}, &Post{}, &Comment{}, &Reaction{}, &ChatRoom{}, &ChatMessage{},
+		&Follow{}, &Story{}, &MessageRequest{}, &Block{}, &Report{}, &Notification{})
 	if err != nil {
 		log.Fatal("Failed to migrate database:", err)
 	}
@@ -106,11 +104,48 @@ func saveToMinio(bucket, objectName, contentType string, data []byte) (string, e
 	return publicHost + "/" + bucket + "/" + objectName, nil
 }
 
-// ── JWT helpers (mock — replace with real JWT in production) ──────────────────
+// ── JWT helpers ───────────────────────────────────────────────────────────────
 
-func makeToken(userID string) string  { return "mock-jwt-for-" + userID }
-func userIDFromToken(token string) string {
-	return strings.TrimPrefix(token, "mock-jwt-for-")
+func getJWTSecret() []byte {
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "change_me_in_production_use_long_random_string" // Fallback for dev
+	}
+	return []byte(secret)
+}
+
+func makeToken(userID string) string {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"userId": userID,
+		"iat":    time.Now().Unix(),
+		"exp":    time.Now().Add(24 * time.Hour).Unix(),
+	})
+	tokenString, err := token.SignedString(getJWTSecret())
+	if err != nil {
+		log.Println("Error signing token:", err)
+		return ""
+	}
+	return tokenString
+}
+
+func userIDFromToken(tokenString string) string {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return getJWTSecret(), nil
+	})
+
+	if err != nil || !token.Valid {
+		return ""
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if userID, ok := claims["userId"].(string); ok {
+			return userID
+		}
+	}
+	return ""
 }
 
 func authMiddleware(c *fiber.Ctx) error {
@@ -118,15 +153,19 @@ func authMiddleware(c *fiber.Ctx) error {
 	if !strings.HasPrefix(auth, "Bearer ") {
 		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
 	}
-	uid := userIDFromToken(strings.TrimPrefix(auth, "Bearer "))
+	tokenStr := strings.TrimPrefix(auth, "Bearer ")
+	uid := userIDFromToken(tokenStr)
 	if uid == "" {
-		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
+		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized: Invalid token"})
 	}
 	c.Locals("uid", uid)
 	return c.Next()
 }
 
-func currentUID(c *fiber.Ctx) string { return c.Locals("uid").(string) }
+func currentUID(c *fiber.Ctx) string {
+	uid, _ := c.Locals("uid").(string)
+	return uid
+}
 
 // ── Twilio SMS ────────────────────────────────────────────────────────────────
 
@@ -170,17 +209,50 @@ func main() {
 	app.Use(logger.New())
 	app.Use(cors.New(cors.Config{AllowOrigins: "*", AllowHeaders: "Authorization,Content-Type"}))
 
+	// General API Rate Limiting (100 req/min)
+	apiLimiter := limiter.New(limiter.Config{
+		Max:        100,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			if uid := userIDFromToken(strings.TrimPrefix(c.Get("Authorization"), "Bearer ")); uid != "" {
+				return uid
+			}
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{"error": "Too many requests. Please try again later."})
+		},
+	})
+
 	// ── Health ────────────────────────────────────────────────────────────────
 	app.Get("/health", func(c *fiber.Ctx) error { return c.SendString("Vula Backend OK") })
 
 	// ── AUTH ──────────────────────────────────────────────────────────────────
 	auth := app.Group("/api/auth")
 
+	// Auth Rate Limiting
+	authLimiter := limiter.New(limiter.Config{
+		Max:        5,
+		Expiration: 10 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{"error": "Too many auth requests. Please try again later."})
+		},
+	})
+	auth.Use(authLimiter)
+
 	auth.Post("/request-code", func(c *fiber.Ctx) error {
 		var req struct{ Phone string `json:"phone"` }
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
 		}
+		req.Phone = strings.TrimSpace(req.Phone)
+		if len(req.Phone) < 7 || len(req.Phone) > 15 {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid phone number format"})
+		}
+		
 		n, _ := rand.Int(rand.Reader, big.NewInt(900000))
 		code := fmt.Sprintf("%06d", n.Int64()+100000)
 		if rdb != nil { rdb.Set(ctx, "otp:"+req.Phone, code, 5*time.Minute) }
@@ -194,15 +266,29 @@ func main() {
 			Code  string `json:"code"`
 		}
 		if err := c.BodyParser(&req); err != nil {
+			log.Printf("BodyParser error: %v", err)
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+		}
+		
+		log.Printf("VerifyCode called with phone: '%s', code: '%s'", req.Phone, req.Code)
+
+		req.Phone = strings.TrimSpace(req.Phone)
+		req.Code = strings.TrimSpace(req.Code)
+		if len(req.Phone) == 0 || len(req.Code) != 6 {
+			log.Printf("Invalid phone or code length")
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid phone or code"})
 		}
 
 		// Dev bypass
-		bypassAllowed := req.Code == DEV_OTP_BYPASS && os.Getenv("GO_ENV") != "production"
+		devOTP := "123456" // Should be moved to env ideally, but hardcoding for demo if not prod
+		env := os.Getenv("GO_ENV")
+		bypassAllowed := req.Code == devOTP && env != "production"
+		log.Printf("GO_ENV: %s, bypassAllowed: %v", env, bypassAllowed)
 
 		if !bypassAllowed && rdb != nil {
 			val, err := rdb.Get(ctx, "otp:"+req.Phone).Result()
 			if err != nil || val != req.Code {
+				log.Printf("Redis OTP check failed for phone %s. err: %v, val: %s", req.Phone, err, val)
 				return c.Status(400).JSON(fiber.Map{"error": "Invalid code"})
 			}
 			rdb.Del(ctx, "otp:"+req.Phone)
@@ -230,7 +316,7 @@ func main() {
 	})
 
 	// ── All protected routes require auth ─────────────────────────────────────
-	api := app.Group("/api", authMiddleware)
+	api := app.Group("/api", apiLimiter, authMiddleware)
 
 	// ── USERS ─────────────────────────────────────────────────────────────────
 	api.Get("/users/me", func(c *fiber.Ctx) error {
@@ -404,16 +490,51 @@ func main() {
 			VideoURL:  videoURL,
 			IsStory:   false,
 			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
 		}
 		db.Create(&post)
 		return c.Status(201).JSON(postToMap(post, caption, mediaType))
 	})
 
+	api.Delete("/posts/:postId", func(c *fiber.Ctx) error {
+		uid := currentUID(c)
+		postId := c.Params("postId")
+		
+		var post Post
+		if err := db.First(&post, "id = ?", postId).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "Post not found"})
+		}
+		
+		if post.AuthorID != uid {
+			return c.Status(403).JSON(fiber.Map{"error": "Unauthorized to delete this post"})
+		}
+		
+		db.Where("post_id = ?", postId).Delete(&Comment{})
+		db.Where("post_id = ?", postId).Delete(&Reaction{})
+		db.Delete(&post)
+		
+		return c.SendStatus(200)
+	})
+
 	api.Post("/posts/:postId/react", func(c *fiber.Ctx) error {
 		var req struct{ Emoji string `json:"emoji"` }
 		c.BodyParser(&req)
-		r := Reaction{PostID: c.Params("postId"), UserID: currentUID(c), Emoji: req.Emoji, CreatedAt: time.Now()}
+		uid := currentUID(c)
+		r := Reaction{PostID: c.Params("postId"), UserID: uid, Emoji: req.Emoji, CreatedAt: time.Now()}
 		db.Where(Reaction{PostID: r.PostID, UserID: r.UserID}).Assign(r).FirstOrCreate(&r)
+		
+		// Create notification if not reacting to own post
+		var post Post
+		if err := db.First(&post, "id = ?", r.PostID).Error; err == nil && post.AuthorID != uid {
+			var actor User; db.First(&actor, "id = ?", uid)
+			n := Notification{
+				ID: uuid.New().String(), UserID: post.AuthorID, ActorID: uid,
+				ActorName: actor.Username, Type: "like", TargetID: post.ID,
+				CreatedAt: time.Now(),
+			}
+			db.Create(&n)
+		}
+		
 		return c.SendStatus(200)
 	})
 
@@ -423,11 +544,63 @@ func main() {
 	})
 
 	api.Post("/posts/:postId/comments", func(c *fiber.Ctx) error {
-		return c.Status(201).JSON(fiber.Map{"id": "comment-1", "text": "ok"})
+		var req struct{ Text string `json:"text"` }
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Invalid request"})
+		}
+		uid := currentUID(c)
+		var author User
+		if err := db.First(&author, "id = ?", uid).Error; err != nil {
+			return c.Status(404).JSON(fiber.Map{"error": "User not found"})
+		}
+		
+		comment := Comment{
+			ID:        uuid.New().String(),
+			PostID:    c.Params("postId"),
+			AuthorID:  uid,
+			Author:    author,
+			Text:      req.Text,
+			CreatedAt: time.Now(),
+		}
+		if err := db.Create(&comment).Error; err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to create comment"})
+		}
+		
+		// Create notification if not commenting on own post
+		var post Post
+		if err := db.First(&post, "id = ?", comment.PostID).Error; err == nil && post.AuthorID != uid {
+			n := Notification{
+				ID: uuid.New().String(), UserID: post.AuthorID, ActorID: uid,
+				ActorName: author.Username, Type: "comment", TargetID: post.ID,
+				CreatedAt: time.Now(),
+			}
+			db.Create(&n)
+		}
+		
+		return c.Status(201).JSON(fiber.Map{
+			"id":             comment.ID,
+			"authorId":       comment.AuthorID,
+			"authorUsername": comment.Author.Username,
+			"text":           comment.Text,
+			"createdAt":      comment.CreatedAt.UnixMilli(),
+		})
 	})
 
 	api.Get("/posts/:postId/comments", func(c *fiber.Ctx) error {
-		return c.JSON([]interface{}{})
+		var comments []Comment
+		db.Preload("Author").Where("post_id = ?", c.Params("postId")).Order("created_at ASC").Find(&comments)
+		
+		out := make([]map[string]interface{}, 0)
+		for _, cm := range comments {
+			out = append(out, fiber.Map{
+				"id":             cm.ID,
+				"authorId":       cm.AuthorID,
+				"authorUsername": cm.Author.Username,
+				"text":           cm.Text,
+				"createdAt":      cm.CreatedAt.UnixMilli(),
+			})
+		}
+		return c.JSON(out)
 	})
 
 	// ── STORIES ───────────────────────────────────────────────────────────────
@@ -551,14 +724,28 @@ func main() {
 			Sender: sender, Text: req.Text, CreatedAt: time.Now(),
 		}
 		db.Create(&msg)
+		
+		var room ChatRoom
+		db.Preload("Participants").First(&room, "id = ?", c.Params("roomId"))
+		
 		db.Model(&ChatRoom{}).Where("id = ?", c.Params("roomId")).
 			Updates(map[string]interface{}{"last_message_time": time.Now()})
-		return c.Status(201).JSON(fiber.Map{
-			"id": msg.ID, "senderId": msg.SenderID,
-			"senderUsername": msg.Sender.Username,
-			"text": msg.Text, "createdAt": msg.CreatedAt.UnixMilli(),
-			"readBy": []string{},
-		})
+			
+		payload := fiber.Map{
+			"type": "message",
+			"roomId": msg.RoomID,
+			"message": fiber.Map{
+				"id": msg.ID, "senderId": msg.SenderID,
+				"senderUsername": msg.Sender.Username,
+				"text": msg.Text, "createdAt": msg.CreatedAt.UnixMilli(),
+				"readBy": []string{},
+			},
+		}
+		
+		// Broadcast to all participants including sender
+		hub.BroadcastRoom(room.Participants, payload)
+		
+		return c.Status(201).JSON(payload["message"])
 	})
 
 	api.Post("/chat/rooms/:roomId/read", func(c *fiber.Ctx) error { return c.SendStatus(200) })
@@ -623,17 +810,141 @@ func main() {
 	api.Post("/local/posts/:postId/react", func(c *fiber.Ctx) error { return c.SendStatus(200) })
 	api.Get("/local/people", func(c *fiber.Ctx) error { return c.JSON([]string{}) })
 
+	// ── NOTIFICATIONS ─────────────────────────────────────────────────────────
+	api.Get("/notifications", func(c *fiber.Ctx) error {
+		uid := currentUID(c)
+		var notifs []Notification
+		db.Where("user_id = ?", uid).Order("created_at DESC").Limit(50).Find(&notifs)
+		
+		out := make([]map[string]interface{}, 0)
+		for _, n := range notifs {
+			out = append(out, fiber.Map{
+				"id": n.ID, "userId": n.UserID, "actorId": n.ActorID,
+				"actorName": n.ActorName, "type": n.Type, "targetId": n.TargetID,
+				"read": n.Read, "createdAt": n.CreatedAt.UnixMilli(),
+			})
+		}
+		return c.JSON(out)
+	})
+
+	api.Post("/notifications/read", func(c *fiber.Ctx) error {
+		uid := currentUID(c)
+		db.Model(&Notification{}).Where("user_id = ?", uid).Update("read", true)
+		return c.SendStatus(200)
+	})
+
 	// ── MEDIA ─────────────────────────────────────────────────────────────────
 	api.Post("/media/voice", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"url": "https://example.com/voice/placeholder.m4a"})
+		file, err := c.FormFile("media")
+		if err != nil || file == nil {
+			return c.Status(400).JSON(fiber.Map{"error": "No file uploaded"})
+		}
+		src, err := file.Open()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to read file"})
+		}
+		defer src.Close()
+		data := make([]byte, file.Size)
+		src.Read(data)
+		objName := uuid.New().String() + ".m4a"
+		pubURL, err := saveToMinio("voice", objName, "audio/mp4", data)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to save file"})
+		}
+		return c.JSON(fiber.Map{"url": pubURL})
 	})
+
 	api.Post("/users/me/avatar", func(c *fiber.Ctx) error {
-		var u User; db.First(&u, "id = ?", currentUID(c))
+		file, err := c.FormFile("media") // Form field name must match Android Retrofit (@Part)
+		if err != nil {
+			// Try checking "file" field instead just in case
+			file, err = c.FormFile("file")
+		}
+		if err != nil || file == nil {
+			return c.Status(400).JSON(fiber.Map{"error": "No file uploaded"})
+		}
+		src, err := file.Open()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to read file"})
+		}
+		defer src.Close()
+		data := make([]byte, file.Size)
+		src.Read(data)
+		objName := uuid.New().String() + ".jpg"
+		pubURL, err := saveToMinio("profiles", objName, "image/jpeg", data)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to save file"})
+		}
+		
+		uid := currentUID(c)
+		db.Model(&User{}).Where("id = ?", uid).Update("profile_image_url", pubURL)
+		
+		var u User
+		db.First(&u, "id = ?", uid)
 		return c.JSON(userToMap(u))
 	})
+
 	api.Post("/users/me/banner", func(c *fiber.Ctx) error {
-		var u User; db.First(&u, "id = ?", currentUID(c))
+		file, err := c.FormFile("media")
+		if err != nil {
+			file, err = c.FormFile("file")
+		}
+		if err != nil || file == nil {
+			return c.Status(400).JSON(fiber.Map{"error": "No file uploaded"})
+		}
+		src, err := file.Open()
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to read file"})
+		}
+		defer src.Close()
+		data := make([]byte, file.Size)
+		src.Read(data)
+		objName := uuid.New().String() + ".jpg"
+		pubURL, err := saveToMinio("profiles", objName, "image/jpeg", data)
+		if err != nil {
+			return c.Status(500).JSON(fiber.Map{"error": "Failed to save file"})
+		}
+		
+		uid := currentUID(c)
+		db.Model(&User{}).Where("id = ?", uid).Update("banner_url", pubURL)
+		
+		var u User
+		db.First(&u, "id = ?", uid)
 		return c.JSON(userToMap(u))
+	})
+	
+	// ── SAFETY ────────────────────────────────────────────────────────────────
+	api.Post("/users/:userId/block", func(c *fiber.Ctx) error {
+		uid := currentUID(c)
+		targetID := c.Params("userId")
+		if uid == targetID {
+			return c.Status(400).JSON(fiber.Map{"error": "Cannot block yourself"})
+		}
+		
+		block := Block{BlockerID: uid, BlockedID: targetID, CreatedAt: time.Now()}
+		db.Where(Block{BlockerID: uid, BlockedID: targetID}).FirstOrCreate(&block)
+		
+		// Remove follows both ways
+		db.Where("follower_id = ? AND followed_id = ?", uid, targetID).Delete(&Follow{})
+		db.Where("follower_id = ? AND followed_id = ?", targetID, uid).Delete(&Follow{})
+		
+		return c.SendStatus(200)
+	})
+
+	api.Post("/posts/:postId/report", func(c *fiber.Ctx) error {
+		var req struct{ Reason string `json:"reason"` }
+		c.BodyParser(&req)
+		
+		report := Report{
+			ID: uuid.New().String(),
+			ReporterID: currentUID(c),
+			TargetType: "post",
+			TargetID: c.Params("postId"),
+			Reason: req.Reason,
+			CreatedAt: time.Now(),
+		}
+		db.Create(&report)
+		return c.SendStatus(200)
 	})
 
 	// ── WEBSOCKETS ────────────────────────────────────────────────────────────
@@ -649,6 +960,30 @@ func main() {
 			mt, msg, err := c.ReadMessage()
 			if err != nil || mt == websocket.CloseMessage { break }
 			log.Printf("WS from %s: %s", userID, string(msg))
+			
+			var payload struct {
+				Type   string `json:"type"`
+				RoomID string `json:"roomId"`
+			}
+			if err := json.Unmarshal(msg, &payload); err == nil && payload.RoomID != "" {
+				var room ChatRoom
+				if err := db.Preload("Participants").First(&room, "id = ?", payload.RoomID).Error; err == nil {
+					// Broadcast typing/read events back to the room
+					if payload.Type == "typing" || payload.Type == "read" {
+						event := fiber.Map{
+							"type": payload.Type,
+							"roomId": payload.RoomID,
+							"userId": userID,
+						}
+						// Only broadcast to OTHER participants
+						for _, p := range room.Participants {
+							if p.ID != userID {
+								hub.SendMessage(p.ID, event)
+							}
+						}
+					}
+				}
+			}
 		}
 		hub.unregister <- client
 	}))
@@ -661,13 +996,19 @@ func main() {
 func userToMap(u User) map[string]interface{} {
 	displayName := u.DisplayName
 	if displayName == "" { displayName = u.Username }
+	
+	var followersCount, followingCount, postsCount int64
+	db.Model(&Follow{}).Where("followed_id = ?", u.ID).Count(&followersCount)
+	db.Model(&Follow{}).Where("follower_id = ?", u.ID).Count(&followingCount)
+	db.Model(&Post{}).Where("author_id = ?", u.ID).Count(&postsCount)
+
 	return fiber.Map{
 		"id": u.ID, "username": u.Username, "phoneNumber": u.PhoneNumber,
 		"displayName": displayName, "bio": u.Bio,
 		"richStatus": u.RichStatus,
 		"profileImageUrl": u.ProfileImageURL,
 		"bannerUrl": u.BannerURL,
-		"followersCount": 0, "followingCount": 0, "postsCount": 0,
+		"followersCount": followersCount, "followingCount": followingCount, "postsCount": postsCount,
 		"isOnline": false, "createdAt": u.CreatedAt.UnixMilli(),
 	}
 }
@@ -681,14 +1022,31 @@ func postToMap(p Post, caption, mediaType string) map[string]interface{} {
 		authorUsername = p.Author.Username
 		authorAvatar   = p.Author.ProfileImageURL
 	}
+	
+	var likesCount, commentsCount int64
+	db.Model(&Reaction{}).Where("post_id = ?", p.ID).Count(&likesCount)
+	db.Model(&Comment{}).Where("post_id = ?", p.ID).Count(&commentsCount)
+
+	// Fetch user IDs who liked it
+	var likedBy []string
+	db.Model(&Reaction{}).Where("post_id = ?", p.ID).Pluck("user_id", &likedBy)
+
+	// Fetch reactions map
+	var reactions []Reaction
+	db.Where("post_id = ?", p.ID).Find(&reactions)
+	reactionsMap := make(map[string]string)
+	for _, r := range reactions {
+		reactionsMap[r.UserID] = r.Emoji
+	}
+
 	return fiber.Map{
 		"id": p.ID, "authorId": p.AuthorID,
 		"authorUsername": authorUsername,
 		"authorProfileImageUrl": authorAvatar,
 		"caption": caption, "imageUrl": p.ImageURL, "videoUrl": p.VideoURL,
-		"mediaType": mediaType, "likesCount": 0, "commentsCount": 0,
+		"mediaType": mediaType, "likesCount": likesCount, "commentsCount": commentsCount,
 		"createdAt": p.CreatedAt.UnixMilli(),
-		"likedBy": []string{}, "reactions": map[string]string{},
+		"likedBy": likedBy, "reactions": reactionsMap,
 	}
 }
 

@@ -9,7 +9,10 @@ import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraControl
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.ImageCapture
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -84,6 +87,7 @@ fun CreatePostScreen(
     var capturedMediaType by remember { mutableStateOf("image") }
     var contentType by remember { mutableIntStateOf(0) } // 0=Post 1=Story 2=Clip
     var flashEnabled by remember { mutableStateOf(false) }
+    var captureState by remember { mutableStateOf("CAPTURE") } // CAPTURE, REVIEW
     var showBottomSheet by remember { mutableStateOf(false) }
     var caption by remember { mutableStateOf("") }
     var audienceIndex by remember { mutableIntStateOf(0) }
@@ -95,11 +99,37 @@ fun CreatePostScreen(
     val videoCapture = remember { VideoCapture.withOutput(Recorder.Builder().build()) }
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
     var recording by remember { mutableStateOf<Recording?>(null) }
+    var cameraControl by remember { mutableStateOf<CameraControl?>(null) }
+    var cameraInfo by remember { mutableStateOf<CameraInfo?>(null) }
 
-    // Gallery (real MediaStore)
-    val galleryPhotos = remember { loadRecentGalleryUris(context, 20) }
+    var galleryPhotos by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
     // Permissions
+    val permissionsToRequest = remember {
+        if (android.os.Build.VERSION.SDK_INT >= 34) {
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            )
+        } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO
+            )
+        } else {
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            )
+        }
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
@@ -107,11 +137,18 @@ fun CreatePostScreen(
     }
 
     LaunchedEffect(Unit) {
-        val cam = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-        if (cam == PackageManager.PERMISSION_GRANTED) hasPermissions = true
-        else permissionLauncher.launch(
-            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-        )
+        val allGranted = permissionsToRequest.all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if (allGranted) hasPermissions = true
+        else permissionLauncher.launch(permissionsToRequest)
+    }
+
+    // Load gallery dynamically when permissions are granted
+    LaunchedEffect(hasPermissions) {
+        if (hasPermissions) {
+            galleryPhotos = loadRecentGalleryUris(context, 20)
+        }
     }
 
     // Bind CameraX when permissions ready or lens changes
@@ -126,7 +163,9 @@ fun CreatePostScreen(
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             try {
                 provider.unbindAll()
-                provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture, videoCapture)
+                val camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture, videoCapture)
+                cameraControl = camera.cameraControl
+                cameraInfo = camera.cameraInfo
             } catch (e: Exception) {
                 Log.e("CameraX", "Bind failed", e)
             }
@@ -146,7 +185,7 @@ fun CreatePostScreen(
             // Detect media type from MIME type
             val mime = context.contentResolver.getType(uri) ?: ""
             capturedMediaType = if (mime.startsWith("video")) "video" else "image"
-            showBottomSheet = true
+            captureState = "REVIEW"
         }
     }
 
@@ -167,8 +206,8 @@ fun CreatePostScreen(
                 Text("Allow camera to capture moments", color = Color.White.copy(alpha = 0.6f))
                 Spacer(Modifier.height(24.dp))
                 Button(onClick = {
-                    permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-                }) { Text("Allow Camera") }
+                    permissionLauncher.launch(permissionsToRequest)
+                }) { Text("Allow Permissions") }
             }
         } else {
             // ── Main Column: viewfinder on top, gallery flush below ───────────
@@ -185,6 +224,24 @@ fun CreatePostScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp))
+                            .pointerInput(cameraControl) {
+                                detectTransformGestures { _, _, zoom, _ ->
+                                    cameraInfo?.zoomState?.value?.let { currentZoom ->
+                                        val newZoom = currentZoom.zoomRatio * zoom.toFloat()
+                                        cameraControl?.setZoomRatio(newZoom)
+                                    }
+                                }
+                            }
+                            .pointerInput(cameraControl) {
+                                detectTapGestures { offset ->
+                                    val factory = androidx.camera.core.SurfaceOrientedMeteringPointFactory(
+                                        size.width.toFloat(), size.height.toFloat()
+                                    )
+                                    val point = factory.createPoint(offset.x, offset.y)
+                                    val action = androidx.camera.core.FocusMeteringAction.Builder(point).build()
+                                    cameraControl?.startFocusAndMetering(action)
+                                }
+                            }
                     )
 
                     // Gradient at the very bottom of the viewfinder for legibility
@@ -292,7 +349,7 @@ fun CreatePostScreen(
                                                     override fun onImageSaved(out: ImageCapture.OutputFileResults) {
                                                         capturedUri = Uri.fromFile(file)
                                                         capturedMediaType = "image"
-                                                        showBottomSheet = true
+                                                        captureState = "REVIEW"
                                                     }
                                                     override fun onError(e: ImageCaptureException) {
                                                         Log.e("Camera", "Capture failed", e)
@@ -300,7 +357,8 @@ fun CreatePostScreen(
                                                 }
                                             )
                                         },
-                                        onPress = {
+                                        onLongPress = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             val file = File(context.cacheDir, "video_${System.currentTimeMillis()}.mp4")
                                             val opts = FileOutputOptions.Builder(file).build()
                                             val rec = videoCapture.output
@@ -314,15 +372,19 @@ fun CreatePostScreen(
                                                             if (!event.hasError()) {
                                                                 capturedUri = Uri.fromFile(file)
                                                                 capturedMediaType = "video"
-                                                                showBottomSheet = true
+                                                                captureState = "REVIEW"
                                                             }
                                                             recording?.close(); recording = null
                                                         }
                                                     }
                                                 }
                                             recording = rec
+                                        },
+                                        onPress = {
                                             tryAwaitRelease()
-                                            recording?.stop(); recording = null
+                                            if (recording != null) {
+                                                recording?.stop(); recording = null
+                                            }
                                         }
                                     )
                                 }
@@ -340,6 +402,7 @@ fun CreatePostScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(Color.Black)
+                        .navigationBarsPadding()
                         .padding(bottom = 8.dp)
                 ) {
                     Row(
@@ -384,7 +447,7 @@ fun CreatePostScreen(
                                             val mime = context.contentResolver.getType(uri) ?: ""
                                             capturedMediaType = if (mime.startsWith("video")) "video" else "image"
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            showBottomSheet = true
+                                            captureState = "REVIEW"
                                         }
                                 ) {
                                     AsyncImage(
@@ -400,6 +463,59 @@ fun CreatePostScreen(
                     Spacer(Modifier.height(8.dp))
                 }
             } // end main Column
+        }
+
+        // ── Review Overlay ────────────────────────────────────────────────────────
+        AnimatedVisibility(
+            visible = captureState == "REVIEW" && capturedUri != null && !showBottomSheet,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                if (capturedMediaType == "video") {
+                    VideoPlayer(videoUrl = capturedUri.toString(), modifier = Modifier.fillMaxSize(), autoPlay = true)
+                } else {
+                    AsyncImage(
+                        model = capturedUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+                
+                // Top gradient
+                Box(modifier = Modifier.fillMaxWidth().height(120.dp).background(Brush.verticalGradient(listOf(Color.Black.copy(0.6f), Color.Transparent))))
+                
+                // Bottom gradient
+                Box(modifier = Modifier.fillMaxWidth().height(160.dp).align(Alignment.BottomCenter).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.8f)))))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 48.dp, start = 24.dp, end = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { 
+                        capturedUri = null
+                        captureState = "CAPTURE" 
+                    }) {
+                        Text("Retake", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                    }
+
+                    Button(
+                        onClick = { showBottomSheet = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        shape = CircleShape,
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
+                    ) {
+                        Text("Next", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.width(8.dp))
+                        Icon(Icons.Default.ArrowForward, null, tint = Color.White)
+                    }
+                }
+            }
         }
 
         // ── Post Details Bottom Sheet ──────────────────────────────────────────
